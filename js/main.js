@@ -10,6 +10,7 @@ import { buildGallery } from './gallery.js';
 import { createViewer } from './viewer.js';
 import { createVisitors } from './visitors.js';
 import { createUnwrap } from './loading.js';
+import { music } from './music.js';
 import { ARTIST, WORKS, TOUR } from './collection.js';
 
 const $ = (s) => document.querySelector(s);
@@ -36,6 +37,13 @@ addEventListener('resize', () => {
 
 // ── load: the fonts the canvases letter with, then every painting's small copy ──
 const fill = $('#load .fill');
+// the soundtrack (music.js): browsers allow sound only after a click or key, so the first one starts it
+const snd = $('#snd');
+const sndLabel = () => { snd.textContent = music.muted ? '♪ sound off' : '♪ sound on'; snd.style.textDecoration = music.muted ? 'line-through' : ''; };
+sndLabel();
+snd.onclick = (e) => { e.stopPropagation(); music.toggle(); sndLabel(); };
+for (const ev of ['pointerdown', 'keydown']) addEventListener(ev, (e) => { if (e.target !== snd && !music.muted) music.start(); }, { capture: true });
+addEventListener('keydown', (e) => { if (e.key.toLowerCase() === 'm' && !e.repeat) { music.toggle(); sndLabel(); } });
 const unwrap = createUnwrap($('#load'), WORKS.length);   // the parcels (loading.js)
 await Promise.all(['700 40px Caveat', '600 40px Caveat', '400 20px "Patrick Hand"'].map(f => document.fonts.load(f).catch(() => {})));
 const textures = new Map();
@@ -132,7 +140,7 @@ async function enter() {
   }
   me.pos.copy(gal.start); me.yaw = 0; me.pitch = 0; auto = null;
   camera.fov = 62; camera.updateProjectionMatrix();
-  mode = 'inside'; setUI();
+  mode = 'inside'; setUI(); music.setPlace('inside');
   applyLook();
   fadeIn();
 }
@@ -146,7 +154,7 @@ async function leave() {
   orbit.target.set(0, 2.2, MUSEUM_Z - 4);
   // back off to the usual view
   const from = camera.position.clone(), to = new THREE.Vector3(10, 6, 26), start = performance.now();
-  mode = 'outside'; setUI(); orbit.enabled = false;
+  mode = 'outside'; setUI(); orbit.enabled = false; music.setPlace('outside');
   fadeIn();
   const step = () => {
     const k = Math.min(1, (performance.now() - start) / 1600), e = k * k * (3 - 2 * k);
@@ -367,4 +375,4 @@ mode = 'outside'; setUI();
 requestAnimationFrame(frame);
 $('#load').classList.add('hide');
 setTimeout(() => unwrap.stop(), 700);
-window.__portfolio = { enter, leave, openView, goToWork, get mode() { return mode; }, get gal() { return gal; }, get visitors() { return visitors; }, me };   // (for the smoke test)
+window.__portfolio = { enter, leave, openView, goToWork, get mode() { return mode; }, get gal() { return gal; }, get visitors() { return visitors; }, me, music };   // (for the smoke test)

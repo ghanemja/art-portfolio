@@ -41,6 +41,8 @@ Settings → Pages → *Deploy from a branch* → pick the branch and `/ (root)`
 - `js/gallery.js`: the hall. It works out how to hang the paintings, then builds the walls, partitions,
   frames, wall cards and picture lights.
 - `js/viewer.js`: the close-up, which shows a painting in its own frame at full size.
+- `js/music.js`: the soundtrack. It's all made live in the browser: a pad, a bass, a kalimba melody and chimes, with wind, the waterfall and birds underneath. It starts on the first click, and the sound button or M mutes it.
+- `js/loading.js`: the loading screen, where you unwrap the paintings.
 - `js/visitors.js`: the other visitors. They are Citizen Maker models that walk between paintings on a grid path.
 - `js/style.js`: art-heist's gouache paint and boiling ink lines.
 - `scripts/smoke.mjs`: a headless test with Playwright. It fails on any console error and saves screenshots to `scripts/shots/`.

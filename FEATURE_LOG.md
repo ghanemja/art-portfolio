@@ -12,3 +12,4 @@
 - ✅ Titles for every painting (made up from what's in each)
 - ✅ Phone D-pad inside the museum (walk ▲▼, turn ◀▶)
 - ✅ Fixed the black band round the floating island's rim
+- ✅ Nature soundtrack: kalimba, pad, chimes over wind, waterfall and birdsong (sound button / M to mute)

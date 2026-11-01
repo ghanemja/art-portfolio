@@ -64,6 +64,8 @@
   #view .x { position: absolute; top: 14px; right: 14px; font-size: 18px; }
   body.viewing #bar, body.viewing #hint, body.viewing #label { opacity: 0; pointer-events: none; }
   body.viewing #pad { opacity: 0; pointer-events: none; }
+  #snd { right: max(14px, env(safe-area-inset-right)); top: 12px; font-size: 17px; padding: 5px 14px; transform: rotate(1deg); }
+  body.viewing #snd { opacity: 0; pointer-events: none; }
 
   /* phones, inside: a D-pad bottom left (walk ▲▼, turn ◀▶), the buttons stacked bottom right */
   #pad { left: max(14px, env(safe-area-inset-left)); bottom: max(18px, env(safe-area-inset-bottom)); display: none;
@@ -101,6 +103,7 @@
 <div id="fade" class="ui"><span></span></div>
 
 <div id="card" class="ui sk"><h1></h1><p></p></div>
+<button id="snd" class="ui sk" aria-label="sound on or off">♪ sound on</button>
 <div id="label" class="ui sk hide fade"></div>
 <div id="hint" class="ui fade"></div>
 <div id="pad" class="ui" aria-label="walk and turn">
@@ -130,6 +133,6 @@
   <div class="grid"></div>
 </div>
 
-<script type="module" src="./js/main.js?cb=8"></script>
+<script type="module" src="./js/main.js?cb=9"></script>
 </body>
 </html>
