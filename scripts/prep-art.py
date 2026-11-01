@@ -22,6 +22,11 @@ CROP = {'IMG_5557': ((0.059, 0.218, 0.802, 0.776), True), 'IMG_8352': ((0, 0, 1,
 # the paint runs to the photo's edges (a thin strip of something else doesn't count): leave them be
 NO_CROP = {'IMG_0658', 'IMG_5263', 'IMG_7208', 'IMG_9506', 'IMG_9595', 'IMG_9621', 'cows_in_storm', 'space_heist_mice'}
 
+# one photo of several canvases: cut each out (pixels in the original: l, t, r, b) and turn it
+# (degrees anticlockwise). They become art_<name><suffix>, hung together as a collage (group)
+SPLIT = {'IMG_9554': [('a', (378, 199, 800, 612), 90), ('b', (811, 246, 1182, 612), 90),
+                      ('c', (389, 630, 665, 915), 90), ('d', (683, 630, 965, 915), 90)]}
+
 def ycc(a):
     r, g, b = a[..., 0], a[..., 1], a[..., 2]
     y = 0.299 * r + 0.587 * g + 0.114 * b
@@ -73,10 +78,15 @@ def find(im):
 def main():
     col_path = os.path.join(ROOT, 'js', 'collection.js'); col = open(col_path).read()
     os.makedirs(os.path.join(ROOT, 'artworks', 'web'), exist_ok=True)
+    jobs = []
     for f in sorted(glob.glob(os.path.join(ROOT, 'artworks', 'originals', '*.jpg'))):
         name = os.path.splitext(os.path.basename(f))[0]; key = name.replace('art_', '')
         im = ImageOps.exif_transpose(Image.open(f)).convert('RGB')
-        found = None if key in NO_CROP else CROP[key] if key in CROP else find(im)
+        if key in SPLIT:
+            for suf, box, rot in SPLIT[key]: jobs.append((name + suf, key + suf, im.crop(box).rotate(rot, expand=True), True))
+        else: jobs.append((name, key, im, False))
+    for name, key, im, done in jobs:
+        found = None if (done or key in NO_CROP) else CROP[key] if key in CROP else find(im)
         shape = 'rect'
         if found:
             (l, t, r, b), rnd = found

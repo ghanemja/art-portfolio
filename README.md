@@ -42,6 +42,7 @@ Settings → Pages → *Deploy from a branch* → pick the branch and `/ (root)`
   frames, wall cards and picture lights.
 - `js/viewer.js`: the close-up, which shows a painting in its own frame at full size.
 - `js/music.js`: the soundtrack. It's all made live in the browser: a pad, a bass, a kalimba melody and chimes, with wind, the waterfall and birds underneath. It starts on the first click, and the sound button or M mutes it.
+- `js/brochure.js`: the brochure a hand offers you at the door. It has your background, medium and inspiration, plus the collections, each with a "Take me there!" tour. The words and the collections are in `collection.js` (`ABOUT`, `COLLECTIONS`).
 - `js/loading.js`: the loading screen, where you unwrap the paintings.
 - `js/visitors.js`: the other visitors. They are Citizen Maker models that walk between paintings on a grid path.
 - `js/style.js`: art-heist's gouache paint and boiling ink lines.

@@ -55,8 +55,28 @@ export function frameSize(a, A = 0.95) {
 
 export function buildGallery(scene, { textures }) {
   // ── 1. plan the hang: how long must the hall be? ──
-  const sizes = WORKS.map(w => frameSize(w.w / w.h));
-  const need = (i) => sizes[i].ow + GAP;
+  // paintings in a group (collection.js group: '…') hang together as a little 2×2 collage,
+  // smaller frames close together, as ONE unit on the wall; everything else is a unit of one
+  const sizes = WORKS.map(w => frameSize(w.w / w.h, w.group ? 0.3 : 0.95));
+  const units = [], seen = new Set();
+  WORKS.forEach((w, i) => {
+    if (seen.has(i)) return;
+    const members = w.group ? WORKS.map((v, j) => v.group === w.group ? j : -1).filter(j => j >= 0) : [i];
+    members.forEach(j => seen.add(j));
+    if (members.length === 1) { units.push({ members, ow: sizes[i].ow, oh: sizes[i].oh, offs: [[0, 0]] }); return; }
+    const G = 0.1, rows = [];
+    for (let k = 0; k < members.length; k += 2) rows.push(members.slice(k, k + 2));
+    const rw = rows.map(r => r.reduce((t, j) => t + sizes[j].ow, 0) + G * (r.length - 1)), rh = rows.map(r => Math.max(...r.map(j => sizes[j].oh)));
+    const ow = Math.max(...rw), oh = rh.reduce((t, h) => t + h, 0) + G * (rows.length - 1), offs = [];
+    let y = oh / 2;
+    rows.forEach((r, ri) => {
+      let x = -rw[ri] / 2; y -= rh[ri] / 2;
+      for (const j of r) { offs.push([x + sizes[j].ow / 2, y]); x += sizes[j].ow + G; }
+      y -= rh[ri] / 2 + G;
+    });
+    units.push({ members, ow, oh, offs, title: w.groupTitle || w.group });
+  });
+  const need = (n) => units[n].ow + GAP;
   // wall runs for a hall of length D: [start x,z] → along a direction, facing a normal
   const runs = (D) => {
     const R = [];
@@ -79,15 +99,15 @@ export function buildGallery(scene, { textures }) {
     for (const r of R) {
       let u = END;
       const row = [];
-      while (i < WORKS.length && u + sizes[i].ow <= r.len - END + 1e-6) { row.push({ i, u: u + sizes[i].ow / 2 }); u += need(i); i++; }
+      while (i < units.length && u + units[i].ow <= r.len - END + 1e-6) { row.push({ n: i, u: u + units[i].ow / 2 }); u += need(i); i++; }
       // spread the row out evenly along the wall
       if (row.length) {
-        const used = row.reduce((s, p) => s + sizes[p.i].ow, 0), spare = r.len - 2 * END - used, g = spare / (row.length + 1);
+        const used = row.reduce((s, p) => s + units[p.n].ow, 0), spare = r.len - 2 * END - used, g = spare / (row.length + 1);
         let at = END + g;
-        for (const p of row) { p.u = at + sizes[p.i].ow / 2; at += sizes[p.i].ow + g; out.push({ ...p, r }); }
+        for (const p of row) { p.u = at + units[p.n].ow / 2; at += units[p.n].ow + g; out.push({ ...p, r }); }
       }
     }
-    return i >= WORKS.length ? out : null;
+    return i >= units.length ? out : null;
   };
   let D = 16, hang = null;
   while (!(hang = tryHang(D)) && D < 200) D += 1;
@@ -242,16 +262,25 @@ export function buildGallery(scene, { textures }) {
   const wireM = paint(0x8a8392, { hatch: 0 }), brass = paint(0xc89b45), lampGlow = paint(0xfff3d6, { emissive: 0xffe2a8, hatch: 0 });
   const pieces = [];
   const _Y = new THREE.Vector3(0, 1, 0);
-  hang.forEach(({ i, u, r }, k) => {
+  hang.forEach(({ n, u, r }) => {
+    const U = units[n], solo = U.members.length === 1;
+    const cy = solo ? HANG_Y : Math.max(HANG_Y, 1.14 + U.oh / 2);          // (a collage sits clear of the chair rail)
+    U.members.forEach((i, mi) => hangOne(i, r, u + U.offs[mi][0], cy + U.offs[mi][1], solo));
+    if (!solo) hangGroup(U, r, u, cy);
+  });
+  // one painting: its frame, and (hung alone) its wires, picture light and card
+  function hangOne(i, r, u, y, solo) {
     const work = WORKS[i], sz = sizes[i];
     const x = r.x + r.dx * u + r.nx * 0.07, z = r.z + r.dz * u + r.nz * 0.07;
     const ry = Math.atan2(r.nx, r.nz);
-    const g = new THREE.Group(); g.position.set(x, HANG_Y, z); g.rotation.y = ry; FG.add(g);
+    const g = new THREE.Group(); g.position.set(x, y, z); g.rotation.y = ry; FG.add(g);
     const [style, finish] = frameStyle(i);
     const tex = textures.get(work.file);
     const F = ornateFrame(sz.ow, sz.oh, g, style, { finish, art: tex, shape: work.shape || 'rect' });   // (round canvases: an oval frame)
     const canvas = F.userData.canvas;
     canvas.userData.work = i;
+    const normal = new THREE.Vector3(r.nx, 0, r.nz);
+    if (!solo) { pieces.push({ i, canvas, card: canvas, center: new THREE.Vector3(x, y, z), normal, size: sz }); return; }
     // the wires up to the picture rail
     const top = sz.oh / 2, hook = new THREE.Vector3(0, 3.22 - HANG_Y, -0.02);
     for (const s of [-1, 1]) {
@@ -286,9 +315,35 @@ export function buildGallery(scene, { textures }) {
     const back = new THREE.Mesh(rb(0.34, 0.22, 0.015, 0.004), paint(0xfbf6ea)); cg.add(back);
     const face = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.2), paint(0xffffff, { map: card, hatch: 0, unique: true }));
     face.position.z = 0.009; face.userData.noInk = true; face.userData.work = i; cg.add(face);
-    const normal = new THREE.Vector3(r.nx, 0, r.nz);
     pieces.push({ i, canvas, card: face, center: new THREE.Vector3(x, HANG_Y, z), normal, size: sz });
-  });
+  }
+  // a collage: one picture light over the lot, one card beside it naming the set
+  function hangGroup(U, r, u, cy) {
+    const x = r.x + r.dx * u + r.nx * 0.07, z = r.z + r.dz * u + r.nz * 0.07;
+    const g = new THREE.Group(); g.position.set(x, cy, z); g.rotation.y = Math.atan2(r.nx, r.nz); FG.add(g);
+    const top = U.oh / 2, lw = Math.min(1.0, U.ow * 0.6);
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.3, 6), brass); arm.position.set(0, top + 0.1, 0.12); arm.rotation.x = 1.1; g.add(arm);
+    const hood = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, lw, 14, 1, false, 0, Math.PI), brass);
+    hood.rotation.z = Math.PI / 2; hood.rotation.x = 0.5; hood.position.set(0, top + 0.2, 0.25); g.add(hood);
+    const bulb = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, lw * 0.9, 8), lampGlow);
+    bulb.rotation.z = Math.PI / 2; bulb.position.set(0, top + 0.18, 0.26); bulb.userData.noInk = true; g.add(bulb);
+    const first = U.members[0];
+    const card = canvasTex(320, 200, (c, w, h) => {
+      c.fillStyle = '#fbf6ea'; c.fillRect(0, 0, w, h);
+      c.strokeStyle = INKC; c.lineWidth = 5; c.strokeRect(3, 3, w - 6, h - 6);
+      c.fillStyle = INKC; c.textBaseline = 'alphabetic';
+      fit(c, U.title, 38, SCRIPT, w - 36, 700); c.fillText(U.title, 18, 52);
+      c.font = `400 21px ${HAND}`; c.fillStyle = '#5a4e5e';
+      c.fillText(ARTIST.name, 18, 86); c.fillText(`a set of ${U.members.length} small canvases`, 18, 112);
+      c.fillStyle = '#e8604c'; c.fillRect(18, h - 52, 46, 4);
+      c.font = `400 17px ${HAND}`; c.fillStyle = '#8a7e8e'; c.fillText('click one to look closer', 18, h - 24);
+    });
+    const cg = new THREE.Group(); cg.position.set(U.ow / 2 + 0.36, 1.4 - cy, -0.04); g.add(cg);
+    cg.add(new THREE.Mesh(rb(0.34, 0.22, 0.015, 0.004), paint(0xfbf6ea)));
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.2), paint(0xffffff, { map: card, hatch: 0, unique: true }));
+    face.position.z = 0.009; face.userData.noInk = true; face.userData.work = first; cg.add(face);
+    for (const p of pieces) if (U.members.includes(p.i)) p.card = face;
+  }
   FG.traverse(o => { if (o.isMesh && Math.max(o.scale.x, o.scale.y) < 0.012) o.userData.noInk = true; });   // (beads and pearls: too small to outline)
   ink(FG, 'mid');
   // merge the frames into a few draws, but keep each painting and card its own mesh (they're clicked)

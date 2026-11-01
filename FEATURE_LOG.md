@@ -15,3 +15,7 @@
 - ✅ Nature soundtrack: kalimba, pad, chimes over wind, waterfall and birdsong (sound button / M to mute)
 - ✅ Every module cache-busted (scripts/bump-cache.py) so fixes reach browsers right away
 - ✅ Fixed the glitching mountain tops (seam crack + depth precision); smoother mountains, painted snow
+- ✅ Fall island: autumn trees swaying in the breeze, falling leaves, leaf piles, pumpkins, golden grass, autumn woods below
+- ✅ 'Hanging the paintings' screen: a crew member on a ladder hammering a nail, another in a hard hat holding the painting
+- ✅ The four-canvas photo split into four paintings, hung as a 2x2 collage (Small Worlds)
+- ✅ Brochure handed to you at the door: JanGogh Art background/medium/inspiration + the six collections with Take me there! tours

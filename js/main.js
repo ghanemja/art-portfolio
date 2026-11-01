@@ -11,9 +11,11 @@ import { createViewer } from './viewer.js';
 import { createVisitors } from './visitors.js';
 import { createUnwrap } from './loading.js';
 import { music } from './music.js';
+import { createBrochure } from './brochure.js';
 import { ARTIST, WORKS, TOUR } from './collection.js';
 
 const $ = (s) => document.querySelector(s);
+let brochure = null;                                    // (made further down: brochure.js)
 const coarse = matchMedia('(pointer: coarse)').matches;
 
 // ── the page's words ──
@@ -132,10 +134,15 @@ async function enter() {
     step();
   });
   fade.querySelector('span').textContent = inside ? '' : 'hanging the paintings…';
+  if (!inside) {                                // the crew up the ladder, hanging one of hers
+    const w = WORKS[Math.floor(Math.random() * WORKS.length)];
+    fade.querySelector('.pic').setAttribute('href', `./artworks/web/${w.file}.webp`);
+    fade.classList.add('hanging');
+  }
   fade.classList.add('on');
   await sleep(480);
   if (!inside) {
-    await sleep(30);
+    await sleep(1500);                          // (let them get a few taps in before the build)
     inside = new THREE.Scene();
     gal = buildGallery(inside, { textures });
     createVisitors(inside, gal, { me }).then(v => { visitors = v; }, (e) => console.warn('no visitors', e));   // (they stroll in while you look about)
@@ -143,6 +150,8 @@ async function enter() {
   me.pos.copy(gal.start); me.yaw = 0; me.pitch = 0; auto = null;
   camera.fov = 62; camera.near = 0.05; camera.far = 200; camera.updateProjectionMatrix();
   mode = 'inside'; setUI(); music.setPlace('inside');
+  setTimeout(() => fade.classList.remove('hanging'), 500);
+  brochure.offer();                             // someone at the door holds out a brochure (the first time)
   applyLook();
   fadeIn();
 }
@@ -304,22 +313,31 @@ const index = $('#index');
 }
 $('#all').onclick = () => index.classList.remove('hide');
 $('#ix').onclick = () => index.classList.add('hide');
-function closeAll() { closeView(); index.classList.add('hide'); }
+function closeAll() { closeView(); index.classList.add('hide'); brochure?.close(); }
 
 // ── the guided tour: from painting to painting, a pause at each ──
 function stopTour() { if (tour) { tour = null; setUI(); label.classList.add('hide'); } }
 $('#tour').onclick = () => {
   if (tour) { stopTour(); return; }
-  closeAll();
-  tour = { k: 0, wait: 0 }; tourStop(); setUI();
+  startTour(null);
 };
-// the tour visits just the featured paintings (collection.js TOUR), round and round
-const tourList = () => { const l = TOUR.map(f => WORKS.findIndex(w => w.file === f)).filter(i => i >= 0); return l.length ? l : WORKS.map((_, i) => i); };
-function tourStop() {
-  const l = tourList(), i = l[tour.k % l.length];
-  goToWork(i);
-  label.textContent = `${WORKS[i].title} · ${tour.k % l.length + 1} of ${l.length}`; label.classList.remove('hide');
+// a tour: the featured paintings (collection.js TOUR), or a collection from the brochure, round and round
+const featured = () => { const l = TOUR.map(f => WORKS.findIndex(w => w.file === f)).filter(i => i >= 0); return l.length ? l : WORKS.map((_, i) => i); };
+function startTour(list, name = '') {
+  closeAll();
+  tour = { k: 0, wait: 0, list: list?.length ? list : featured(), name }; tourStop(); setUI();
 }
+function tourStop() {
+  const l = tour.list, i = l[tour.k % l.length];
+  goToWork(i);
+  label.textContent = (tour.name ? tour.name.replace(/ collection$/i, '') + ': ' : '') + `${WORKS[i].title} · ${tour.k % l.length + 1} of ${l.length}`; label.classList.remove('hide');
+}
+// the brochure (brochure.js): "Take me there!" tours that collection, going in first if need be
+brochure = createBrochure({ onTour: async (list, name) => {
+  if (mode === 'outside') await enter();
+  if (mode === 'inside') startTour(list, name);
+} });
+$('#bro').onclick = () => brochure.open();
 $('#enter').onclick = enter;
 $('#out').onclick = leave;
 

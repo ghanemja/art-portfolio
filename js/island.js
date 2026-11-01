@@ -74,7 +74,7 @@ function islandBody({ rim = rimR, depth = 16, lump = 1, seed = 0, flat = inMuseu
   tg.setAttribute('position', new THREE.Float32BufferAttribute(top, 3)); tg.setIndex(idx); tg.computeVertexNormals();
   colorGeo(tg, (c, x, y, z) => {
     const n = fbm(x * 0.3 + 7 + seed, z * 0.3);
-    c.setHex(PAL.grass).lerp(new THREE.Color(PAL.grassDeep), n * 0.8).lerp(new THREE.Color(PAL.meadow), Math.max(0, y) * 0.6);
+    c.setHex(PAL.grass).lerp(new THREE.Color(PAL.grassDeep), n * 0.8).lerp(new THREE.Color(PAL.meadow), Math.max(0, y) * 0.6).lerp(new THREE.Color(0xc9b56a), 0.22 + 0.2 * fbm(x * 0.2 + 3, z * 0.2));   // (fall: going golden)
   });
   const topM = new THREE.Mesh(tg, VC()); topM.name = 'islandTop'; g.add(topM);
 
@@ -111,27 +111,98 @@ function islandBody({ rim = rimR, depth = 16, lump = 1, seed = 0, flat = inMuseu
 }
 
 // ── a lollipop tree, a bush, a cypress: paint, inked later with the rest ──
+// fall: crowns in reds, oranges, golds and rust (now and then one still green); the cypresses
+// stay evergreen. The crown hangs in its own group from the top of the trunk, so it can sway.
+const AUTUMN = [0xd9773a, 0xc8503a, 0xe3ad45, 0xb8642e, 0xe08f4a, 0xcf6a3c, 0xd99a3c];
+const autumn = (R) => R() < 0.12 ? [PAL.leaf, 0x93b56f][Math.floor(R() * 2)] : AUTUMN[Math.floor(R() * AUTUMN.length)];
 function tree(R, kind = 'round') {
   const g = new THREE.Group();
-  const leaf = [PAL.leaf, PAL.leafLight, 0x7a9e5e, 0x93b56f][Math.floor(R() * 4)];
   if (kind === 'cypress') {
     const tr = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.09, 0.5, 8), paint(PAL.bark)); tr.position.y = 0.25; g.add(tr);
+    const crown = new THREE.Group(); crown.position.y = 0.4; g.add(crown);
     const c = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 12), paint(0x6d9358));
-    c.scale.set(0.85, 3.0, 0.85); c.position.y = 1.7; g.add(c);
+    c.scale.set(0.85, 3.0, 0.85); c.position.y = 1.3; crown.add(c);
+    g.userData.crown = crown; g.userData.sway = 0.02;
     return g;
   }
   const h = 1.0 + R() * 0.9;
   const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.14, h, 10), paint(PAL.bark));
   trunk.position.y = h / 2; g.add(trunk);
-  const n = 2 + Math.floor(R() * 2);
+  const crown = new THREE.Group(); crown.position.y = h * 0.85; g.add(crown);
+  const n = 2 + Math.floor(R() * 2), base = autumn(R);
   for (let i = 0; i < n; i++) {
-    const r = 0.75 + R() * 0.5, s = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 14), paint(i ? leaf : PAL.leaf));
-    s.position.set((R() - 0.5) * 0.8, h + r * 0.6 + i * 0.35, (R() - 0.5) * 0.8); g.add(s);
+    const r = 0.75 + R() * 0.5, col = i === 0 ? base : R() < 0.6 ? base : autumn(R);
+    const s = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 14), paint(col));
+    s.position.set((R() - 0.5) * 0.8, h * 0.15 + r * 0.6 + i * 0.35, (R() - 0.5) * 0.8); crown.add(s);
+  }
+  g.userData.crown = crown; g.userData.sway = 0.05; g.userData.leafCol = base; g.userData.crownH = h + 1.0;
+  return g;
+}
+// a pumpkin: ribbed (eight squashed lobes round a core), a curly stem
+function pumpkin(R) {
+  const g = new THREE.Group(), col = [0xe07a2e, 0xe8892f, 0xd96a26][Math.floor(R() * 3)], r = 0.32;
+  const lobe = new THREE.SphereGeometry(r * 0.62, 14, 10);
+  for (let k = 0; k < 8; k++) {
+    const a = k / 8 * Math.PI * 2, m = new THREE.Mesh(lobe, paint(col));
+    m.position.set(Math.cos(a) * r * 0.42, r * 0.62, Math.sin(a) * r * 0.42); m.scale.set(0.8, 0.95, 0.8); m.rotation.y = -a; g.add(m);
+  }
+  const core = new THREE.Mesh(new THREE.SphereGeometry(r * 0.75, 14, 10), paint(col)); core.position.y = r * 0.62; core.scale.y = 0.85; g.add(core);
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.05, 0.16, 8), paint(0x6b7a3a)); stem.position.set(0, r * 1.25, 0); stem.rotation.z = 0.25; g.add(stem);
+  return g;
+}
+// a heap of fallen leaves: a few soft mounds in the tree's colours
+function leafPile(R, base) {
+  const g = new THREE.Group();
+  for (let k = 0; k < 4; k++) {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(0.32 + R() * 0.2, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), paint(k % 2 ? base : AUTUMN[Math.floor(R() * AUTUMN.length)]));
+    m.scale.set(1.3, 0.38, 1.0); m.position.set((R() - 0.5) * 0.7, 0, (R() - 0.5) * 0.6); m.rotation.y = R() * 6; g.add(m);
   }
   return g;
 }
+// leaves falling from the trees: fluttering down, drifting on the breeze, settling a while on
+// the grass before they're gone; some blow off the island's edge and tumble into the sky
+function fallingLeaves(trees, R) {
+  const N = 260, shape = new THREE.Shape();
+  shape.moveTo(0, -0.09); shape.quadraticCurveTo(0.075, -0.02, 0, 0.09); shape.quadraticCurveTo(-0.075, -0.02, 0, -0.09);
+  const geo = new THREE.ShapeGeometry(shape, 4);
+  const im = new THREE.InstancedMesh(geo, paint(0xffffff, { side: THREE.DoubleSide, hatch: 0, unique: true }), N);
+  im.userData.noInk = true; im.frustumCulled = false;
+  const L = [], col = new THREE.Color(), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), one = new THREE.Vector3(1, 1, 1), pos = new THREE.Vector3();
+  const spawn = (l, first) => {
+    const t = trees[Math.floor(R() * trees.length)];
+    l.x = t.position.x + (R() - 0.5) * 1.8; l.z = t.position.z + (R() - 0.5) * 1.8; l.y = t.userData.crownH + R() * 0.8;
+    if (first) l.y = R() * l.y;
+    l.vy = 0.35 + R() * 0.35; l.ph = R() * 6.28; l.sp = 1.5 + R() * 2; l.rest = 0; l.spin = (R() - 0.5) * 4;
+    col.setHex(R() < 0.5 ? t.userData.leafCol : AUTUMN[Math.floor(R() * AUTUMN.length)]); im.setColorAt(l.i, col);
+  };
+  for (let i = 0; i < N; i++) { const l = { i }; spawn(l, true); L.push(l); }
+  im.instanceColor.needsUpdate = true;
+  let gust = 0;
+  const tick = (t, dt) => {
+    gust = 0.6 + 0.5 * Math.sin(t * 0.23) + 0.3 * Math.sin(t * 0.71);
+    let recol = false;
+    for (const l of L) {
+      if (l.rest > 0) {                                                    // lying on the grass
+        l.rest -= dt; if (l.rest <= 0) { spawn(l); recol = true; }
+      } else {
+        l.y -= l.vy * dt;
+        l.x += (0.45 * gust + Math.sin(t * l.sp + l.ph) * 0.5) * dt;      // the breeze blows east, the leaf rocks side to side
+        l.z += Math.cos(t * l.sp * 0.7 + l.ph) * 0.25 * dt;
+        const a = Math.atan2(l.x, l.z), onIsle = Math.hypot(l.x, l.z) < rimR(a) - 0.3;
+        if (onIsle && l.y <= 0.04) { l.y = 0.04; l.rest = 3 + R() * 6; }
+        else if (l.y < -25) { spawn(l); recol = true; }                     // off the edge and gone
+      }
+      const lying = l.rest > 0;
+      e.set(lying ? -Math.PI / 2 : Math.sin(t * l.sp + l.ph) * 0.9, l.ph + (lying ? 0 : t * l.spin), lying ? 0 : Math.cos(t * l.sp + l.ph) * 0.6);
+      m4.compose(pos.set(l.x, l.y, l.z), q.setFromEuler(e), one); im.setMatrixAt(l.i, m4);
+    }
+    im.instanceMatrix.needsUpdate = true;
+    if (recol) im.instanceColor.needsUpdate = true;
+  };
+  return { mesh: im, tick, gust: () => gust };
+}
 function bush(R) {
-  const g = new THREE.Group(), col = [PAL.leaf, 0x7a9e5e, PAL.sage][Math.floor(R() * 3)];
+  const g = new THREE.Group(), col = [0xc0453a, 0xd9773a, 0xe3ad45, 0xa8452e, PAL.sage][Math.floor(R() * 5)];   // (fall: burning bush red, orange, gold)
   for (let i = 0; i < 3; i++) {
     const r = 0.35 + R() * 0.25, s = new THREE.Mesh(new THREE.SphereGeometry(r, 14, 10), paint(col));
     s.position.set((i - 1) * 0.35, r * 0.75, (R() - 0.5) * 0.3); s.scale.y = 0.85; g.add(s);
@@ -197,7 +268,7 @@ function landscape(R) {
     p.setY(i, y);
   }
   geo.computeVertexNormals();
-  const fieldCols = [PAL.meadow, PAL.grass, PAL.mustard, PAL.sage, 0xc9b98a, PAL.grassDeep, 0xd8c98e].map(h => new THREE.Color(h));
+  const fieldCols = [PAL.meadow, PAL.mustard, 0xd9a85a, PAL.sage, 0xc9b98a, 0xc98a52, 0xd8c98e, PAL.grassDeep].map(h => new THREE.Color(h));   // (fall: stubble, gold, rust)
   colorGeo(geo, (c, x, y, z) => {
     // a patchwork of fields, wobbly edges, greener in the low ground
     const fx = Math.floor((x + fbm(x * 0.02, z * 0.02) * 30) / 38), fz = Math.floor((z + fbm(z * 0.02, x * 0.02) * 30) / 30);
@@ -220,7 +291,8 @@ function landscape(R) {
   // woods: little cone trees in clumps (instanced: one draw)
   {
     const tg = new THREE.ConeGeometry(2.4, 7, 7); tg.translate(0, 3.5, 0);
-    const COUNT = 900, im = new THREE.InstancedMesh(tg, paint(0x6f9a64, { hatch: 0.4 }), COUNT);
+    const COUNT = 900, im = new THREE.InstancedMesh(tg, paint(0xffffff, { hatch: 0.4, unique: true }), COUNT);
+    const woodCols = [0x6f9a64, 0x6f9a64, 0xd9773a, 0xc8503a, 0xe3ad45, 0xb8642e].map(h => new THREE.Color(h));   // (fall woods, a few pines still green)
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), v = new THREE.Vector3();
     const ray = new THREE.Raycaster(), down = new THREE.Vector3(0, -1, 0);
     land.updateMatrixWorld(true);
@@ -234,7 +306,7 @@ function landscape(R) {
         const hit = ray.intersectObject(land)[0]; if (!hit) continue;
         const s = 0.7 + R() * 0.7;
         m4.compose(v.set(x, hit.point.y - GROUND_Y, z), q, sc.set(s, s * (0.8 + R() * 0.5), s));
-        im.setMatrixAt(k++, m4);
+        im.setColorAt(k, woodCols[Math.floor(R() * woodCols.length)]); im.setMatrixAt(k++, m4);
       }
     }
     im.count = k; im.userData.noInk = true; g.add(im);
@@ -401,17 +473,32 @@ export function buildIsland(scene, { textures }) {
     for (let i = 0; i < 16; i++) place(tree(R), 1.3);
     for (let i = 0; i < 22; i++) place(bush(R), 0.7, 40, [6, 15]);
     // flowers scattered in the grass
-    const fl = [], cols = [PAL.rose, PAL.mustard, 0xffffff, PAL.lilac, PAL.accent];
+    const fl = [], cols = [0xd9773a, 0xc8503a, 0xe3ad45, 0xb8642e, PAL.accent];   // (fall: fallen leaves dotted in the grass)
     const flowerMats = cols.map(c => paint(c, { hatch: 0 }));
     const byCol = cols.map(() => []);
-    for (let i = 0; i < 260; i++) {
+    for (let i = 0; i < 420; i++) {
       const a = R() * Math.PI * 2, d = 5 + R() * 10, x = Math.sin(a) * d, z = Math.cos(a) * d;
       if (inMuseum(x, z, 0.3) || onWalk(x, z, 0.2) || d > rimR(a) - 1.0) continue;
-      const f = new THREE.SphereGeometry(0.07, 6, 5); f.translate(x, 0.12, z); f.deleteAttribute('uv'); byCol[i % cols.length].push(f);
+      const f = new THREE.CircleGeometry(0.09, 5); f.rotateX(-Math.PI / 2); f.rotateY(R() * 6.28); f.scale(1, 1, 0.55); f.translate(x, 0.04 + R() * 0.03, z); f.deleteAttribute('uv'); byCol[i % cols.length].push(f);
     }
     byCol.forEach((list, i) => { if (list.length) { const m = new THREE.Mesh(mergeGeometries(list), flowerMats[i]); m.userData.noInk = true; isle.add(m); } });
     void fl;
+    // pumpkins along the walk and by the forecourt, a few out in the grass
+    for (const [x, z, sc] of [[-1.55, MUSEUM_Z + 4.0, 1], [1.6, MUSEUM_Z + 4.3, 0.8], [-1.3, MUSEUM_Z + 4.55, 0.6], [2.7, MUSEUM_Z + 3.2, 0.9], [-2.9, MUSEUM_Z + 3.0, 1.1], [1.35, MUSEUM_Z + 8.8, 0.7], [-1.4, MUSEUM_Z + 11.2, 0.9]]) {
+      const p = pumpkin(R); p.scale.setScalar(sc); p.position.set(x, 0, z); p.rotation.y = R() * 6; isle.add(p);
+    }
+    for (let i = 0; i < 4; i++) { const p = pumpkin(R); p.scale.setScalar(0.6 + R() * 0.5); place(p, 0.35, 40, [6, 14]); }
+    // leaf piles under some of the trees, in the colours of the tree above
+    for (const t of isle.children.filter(o => o.userData.leafCol).slice(0, 9)) {
+      const pile = leafPile(R, t.userData.leafCol);
+      pile.position.set(t.position.x + (R() - 0.5) * 1.2, 0, t.position.z + (R() - 0.5) * 1.2); isle.add(pile);
+    }
   }
+
+  // ── fall: leaves coming down off the trees, every crown swaying in the breeze ──
+  const swayers = isle.children.filter(o => o.userData.crown).map((o, k) => ({ c: o.userData.crown, s: o.userData.sway, ph: k * 1.7 }));
+  const leaves = fallingLeaves(isle.children.filter(o => o.userData.leafCol), R);
+  isle.add(leaves.mesh);
 
   // ── the waterfall, off the island's west side ──
   const fall = waterfall(-2.2);
@@ -455,6 +542,10 @@ export function buildIsland(scene, { textures }) {
     for (const s of islets) { s.o.position.y = s.y + Math.sin(t * s.sp + s.ph) * 0.6; s.o.rotation.y = t * 0.03 * s.sp; }
     for (const c of clouds) { const a = c.a + t * c.sp; c.o.position.x = Math.sin(a) * c.d; c.o.position.z = Math.cos(a) * c.d; }
     fall.mat.uniforms.uT.value = t;
+    const dt = Math.min(0.05, t - (tick.last ?? t)); tick.last = t;
+    leaves.tick(t, dt);
+    const gust = leaves.gust();
+    for (const w of swayers) { w.c.rotation.z = -w.s * (0.5 + gust * 0.8) * (0.6 + 0.4 * Math.sin(t * 1.1 + w.ph)); w.c.rotation.x = Math.sin(t * 0.8 + w.ph * 1.3) * w.s * 0.4; }
     mus.tick(t, 1);
   };
   return { tick, door, isle, museum: mus };

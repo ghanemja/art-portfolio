@@ -50,7 +50,23 @@
   #load p { margin: 0; color: var(--ink2); }
   #fade { inset: 0; z-index: 30; background: var(--paper); opacity: 0; pointer-events: none; transition: opacity .45s ease; display: flex; align-items: center; justify-content: center; }
   #fade.on { opacity: 1; pointer-events: auto; }
+  #fade { flex-direction: column; gap: 6px; }
   #fade span { font-family: 'Caveat', cursive; font-size: 34px; }
+  /* the crew hanging a painting (only while the gallery's first being built). Every moving part
+     is its own element animated by transform, so it keeps moving even while the build is busy */
+  #fade .crew { display: none; position: relative; width: 380px; height: 300px; max-width: 92vw; }
+  #fade.hanging .crew { display: block; }
+  #fade .crew svg { position: absolute; overflow: visible; }
+  #fade .set { left: 0; top: 0; }
+  #fade .held { left: 213px; top: 58px; transform-origin: 60px 140px; animation: steady 1.3s ease-in-out infinite; will-change: transform; }
+  #fade .arm { left: 159px; top: 113px; transform-origin: 6px 20px; animation: hammer .62s ease-in infinite; will-change: transform; }
+  #fade .tap { position: absolute; left: 196px; top: 26px; font: 700 26px 'Caveat', cursive; color: #e8604c; opacity: 0;
+    animation: tap .62s linear infinite; will-change: transform, opacity; }
+  #fade .tap.two { left: 236px; top: 14px; animation-delay: .31s; animation-duration: 1.24s; }
+  @keyframes hammer { 0% { transform: rotate(-112deg); } 60% { transform: rotate(-118deg); } 78% { transform: rotate(-49deg); } 84% { transform: rotate(-53deg); } 100% { transform: rotate(-112deg); } }
+  @keyframes tap { 0%, 76% { opacity: 0; transform: scale(.4) rotate(-8deg); } 82% { opacity: 1; transform: scale(1.15) rotate(-8deg); } 100% { opacity: 0; transform: translateY(-12px) scale(1) rotate(-8deg); } }
+  @keyframes steady { 0%, 100% { transform: rotate(-2.5deg) translateY(0); } 50% { transform: rotate(2deg) translateY(-3px); } }
+  @media (max-width: 420px) { #fade .crew { transform: scale(.82); } }
 
   /* the close look at one painting */
   /* (the painting itself, in its frame, is drawn on the canvas behind: js/viewer.js) */
@@ -81,6 +97,50 @@
   body.pad #bar button.sk { font-size: 16px; padding: 6px 14px; }
   body.pad #hint { display: none; }
 
+  /* the hand at the door holding out the brochure */
+  #offer { right: 0; bottom: 120px; z-index: 15; display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
+    transform: translateX(110%); transition: transform .7s cubic-bezier(.2,1.4,.4,1); pointer-events: none; }
+  #offer.in { transform: none; pointer-events: auto; }
+  #offer .bubble { padding: 4px 14px; font-size: 17px; margin-right: 24px; transform: rotate(-2deg); }
+  #offer .take { background: none; border: 0; padding: 0; cursor: pointer; animation: hold 2.4s ease-in-out infinite; }
+  #offer .no { background: none; border: 0; font: inherit; font-size: 14px; color: var(--ink2); text-decoration: underline; cursor: pointer; margin-right: 24px; }
+  @keyframes hold { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(-3deg) translateY(-4px); } }
+  body.viewing #offer, body.reading #offer { display: none; }
+  /* the brochure: two panels either side of a fold, opening out */
+  #brochure { inset: 0; z-index: 22; background: rgba(36,28,42,.55); display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; perspective: 1600px; }
+  #brochure .paper { position: relative; display: grid; grid-template-columns: 1fr 1fr; width: min(980px, 100%); max-height: calc(100vh - 32px); overflow-y: auto;
+    background: #f8f1e1; border: 2.5px solid var(--ink); border-radius: 6px; box-shadow: 6px 8px 0 rgba(42,34,48,.8); }
+  #brochure .paper::after { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 30px; transform: translateX(-50%); pointer-events: none;
+    background: linear-gradient(90deg, rgba(42,34,48,0), rgba(42,34,48,.13) 45%, rgba(255,255,255,.4) 52%, rgba(42,34,48,0)); }
+  #brochure.open .left { animation: unfoldL .8s cubic-bezier(.3,1.2,.5,1) both; transform-origin: right center; }
+  #brochure.open .right { animation: unfoldR .8s cubic-bezier(.3,1.2,.5,1) both; transform-origin: left center; }
+  @keyframes unfoldL { from { transform: rotateY(70deg); opacity: .4; } to { transform: none; opacity: 1; } }
+  @keyframes unfoldR { from { transform: rotateY(-70deg); opacity: .4; } to { transform: none; opacity: 1; } }
+  #brochure .panel { padding: 26px 30px 24px; }
+  #brochure .left { border-right: 1.5px dashed rgba(42,34,48,.25); }
+  #brochure h2 { font-family: 'Caveat', cursive; font-size: 46px; margin: 0; line-height: 1; }
+  #brochure .left h2 { color: var(--accent); font-size: 56px; transform: rotate(-2deg); }
+  #brochure .by { margin: 2px 0 14px; color: var(--ink2); font-size: 16px; letter-spacing: .04em; }
+  #brochure h3 { font-family: 'Caveat', cursive; font-size: 27px; margin: 0; line-height: 1.05; }
+  #brochure p { margin: 3px 0 0; font-size: 16px; line-height: 1.32; color: #3a3240; }
+  #brochure .about { display: flex; gap: 14px; align-items: flex-start; margin: 14px 0; }
+  #brochure .about img { width: 92px; height: 92px; object-fit: cover; border: 5px solid #e4b84f; outline: 2px solid var(--ink); flex: none; transform: rotate(-2deg); }
+  #brochure .about:nth-child(odd) img { transform: rotate(2deg); }
+  #brochure .coll { margin: 12px 0 16px; }
+  #brochure .go { font: 700 15px 'Patrick Hand', cursive; letter-spacing: .05em; margin-top: 6px; padding: 5px 14px; background: transparent;
+    border: 2px solid var(--ink); border-radius: 3px; cursor: pointer; color: var(--ink); }
+  #brochure .go:hover { background: var(--gold); }
+  #brochure .n { font-size: 14px; color: var(--ink2); }
+  #brochure .x { position: sticky; float: right; top: 8px; right: 8px; margin: 8px 8px -40px auto; grid-column: 2; z-index: 2; font-size: 16px; padding: 3px 12px; }
+  @media (max-width: 700px) {
+    #brochure .paper { grid-template-columns: 1fr; }
+    #brochure .paper::after { display: none; }
+    #brochure .left { border-right: 0; border-bottom: 1.5px dashed rgba(42,34,48,.25); }
+    #brochure .x { grid-column: 1; }
+    #brochure .panel { padding: 22px 18px; }
+    #offer { bottom: 200px; } #offer svg { width: 170px; height: 116px; }
+  }
+
   /* every work at once */
   #index { inset: 0; z-index: 20; background: rgba(243,234,215,.97); overflow-y: auto; padding: 70px 18px 40px; box-sizing: border-box; }
   #index h2 { font-family: 'Caveat', cursive; font-size: 46px; margin: 0 0 14px; text-align: center; }
@@ -95,22 +155,87 @@
 { "imports": {
   "three": "https://unpkg.com/three@0.160.0/build/three.module.min.js",
   "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-  "./js/collection.js": "./js/collection.js?cb=11",
-  "./js/gallery.js": "./js/gallery.js?cb=11",
-  "./js/island.js": "./js/island.js?cb=11",
-  "./js/loading.js": "./js/loading.js?cb=11",
-  "./js/main.js": "./js/main.js?cb=11",
-  "./js/museum.js": "./js/museum.js?cb=11",
-  "./js/music.js": "./js/music.js?cb=11",
-  "./js/style.js": "./js/style.js?cb=11",
-  "./js/viewer.js": "./js/viewer.js?cb=11",
-  "./js/visitors.js": "./js/visitors.js?cb=11"
+  "./js/brochure.js": "./js/brochure.js?cb=15",
+  "./js/collection.js": "./js/collection.js?cb=15",
+  "./js/gallery.js": "./js/gallery.js?cb=15",
+  "./js/island.js": "./js/island.js?cb=15",
+  "./js/loading.js": "./js/loading.js?cb=15",
+  "./js/main.js": "./js/main.js?cb=15",
+  "./js/museum.js": "./js/museum.js?cb=15",
+  "./js/music.js": "./js/music.js?cb=15",
+  "./js/style.js": "./js/style.js?cb=15",
+  "./js/viewer.js": "./js/viewer.js?cb=15",
+  "./js/visitors.js": "./js/visitors.js?cb=15"
 } }
 </script>
 </head>
 <body>
 <div id="load" class="ui fade"><h2>opening the gallery…</h2><div class="track"><div class="fill"></div></div><p>unwrapping the paintings</p></div>
-<div id="fade" class="ui"><span></span></div>
+<div id="fade" class="ui">
+  <div class="crew" aria-hidden="true">
+    <!-- the scene: a nail in the wall, a stepladder, the one up it, and the one in the hard hat -->
+    <svg class="set" viewBox="0 0 380 300" width="380" height="300">
+      <g stroke="#2a2230" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none">
+        <path d="M8 292 Q190 288 372 293" />
+        <!-- the nail -->
+        <circle cx="222" cy="66" r="3.5" fill="#8a8392" />
+        <!-- the stepladder -->
+        <path d="M138 104 L96 292 M162 104 L204 292" stroke-width="5" stroke="#b9895a" />
+        <path d="M138 104 L96 292 M162 104 L204 292" />
+        <g stroke-width="4"><path d="M131 135 L169 135 M124 168 L176 168 M117 201 L183 201 M110 234 L190 234 M103 266 L197 266" /></g>
+        <rect x="134" y="97" width="32" height="10" rx="3" fill="#c99f68" />
+        <!-- up the ladder: legs on the third rung, overalls, a backwards cap -->
+        <path d="M146 200 L148 168 M160 200 L158 168" stroke-width="9" stroke="#4d6a8f" />
+        <path d="M146 200 L148 168 M160 200 L158 168" />
+        <path d="M140 202 h10 M156 202 h11" stroke-width="6" />
+        <path d="M141 170 Q140 128 153 124 Q167 128 166 170 Z" fill="#7fb3a8" />
+        <path d="M145 170 L146 146 L161 146 L162 170 Z" fill="#4d6a8f" />
+        <path d="M148 146 L146 128 M159 146 L161 128" stroke-width="2.5" />
+        <path d="M143 136 Q130 150 138 158" />
+        <circle cx="154" cy="104" r="15" fill="#e0b48a" />
+        <path d="M139 100 Q141 86 156 86 Q169 87 170 100 Z" fill="#e8604c" />
+        <path d="M139 100 L129 103" stroke-width="4" stroke="#e8604c" />
+        <circle cx="159" cy="105" r="1.8" fill="#2a2230" /><circle cx="166" cy="104" r="1.8" fill="#2a2230" />
+        <path d="M160 112 Q164 115 167 111" stroke-width="2.2" />
+        <!-- the one holding the painting: hard hat, hi-vis vest, feet planted -->
+        <path d="M263 292 L266 246 M285 292 L281 246" stroke-width="10" stroke="#5a5466" />
+        <path d="M263 292 L266 246 M285 292 L281 246" />
+        <path d="M256 292 h12 M281 292 h13" stroke-width="7" />
+        <path d="M258 248 Q256 196 273 190 Q291 196 289 248 Z" fill="#9aa6b8" />
+        <path d="M262 246 L264 200 L272 210 L281 200 L284 246 Z" fill="#f08a3c" />
+        <path d="M263 222 h20 M263 232 h20" stroke="#fff4c8" stroke-width="3" />
+        <circle cx="273" cy="172" r="16" fill="#a8754e" />
+        <path d="M255 168 Q256 148 273 148 Q290 148 291 168 Z" fill="#e4b84f" />
+        <path d="M251 168 h44" stroke-width="4" />
+        <circle cx="266" cy="174" r="1.8" fill="#2a2230" /><circle cx="279" cy="174" r="1.8" fill="#2a2230" />
+        <path d="M267 181 Q273 186 279 181" stroke-width="2.2" />
+      </g>
+    </svg>
+    <!-- the painting, held up to the nail, arms and all: it wobbles while he steadies it -->
+    <svg class="held" viewBox="0 0 120 145" width="120" height="145">
+      <g stroke="#2a2230" stroke-width="3" stroke-linecap="round" fill="none">
+        <path d="M49 140 Q38 116 34 88 M72 140 Q84 116 88 88" stroke-width="9" stroke="#9aa6b8" />
+        <path d="M49 140 Q38 116 34 88 M72 140 Q84 116 88 88" />
+        <rect x="6" y="6" width="108" height="80" rx="3" fill="#e4b84f" />
+        <rect x="16" y="16" width="88" height="60" fill="#8fc3c9" />
+        <image class="pic" x="16" y="16" width="88" height="60" preserveAspectRatio="xMidYMid slice" href="" />
+        <rect x="16" y="16" width="88" height="60" />
+        <circle cx="34" cy="86" r="6" fill="#a8754e" /><circle cx="88" cy="86" r="6" fill="#a8754e" />
+      </g>
+    </svg>
+    <!-- the hammer arm: swings from the shoulder, again and again -->
+    <svg class="arm" viewBox="-6 -20 104 40" width="104" height="40">
+      <g stroke="#2a2230" stroke-width="3" stroke-linecap="round" fill="none">
+        <path d="M0 0 L46 0" stroke-width="9" stroke="#7fb3a8" /><path d="M0 0 L46 0" />
+        <path d="M48 0 L82 0" stroke-width="5" stroke="#8a5a35" /><path d="M48 0 L82 0" />
+        <rect x="77" y="-12" width="12" height="24" rx="2" fill="#8a8392" />
+        <circle cx="48" cy="0" r="6" fill="#e0b48a" />
+      </g>
+    </svg>
+    <b class="tap">tap!</b><b class="tap two">tap!</b>
+  </div>
+  <span></span>
+</div>
 
 <div id="card" class="ui sk"><h1></h1><p></p></div>
 <button id="snd" class="ui sk" aria-label="sound on or off">♪ sound on</button>
@@ -127,6 +252,7 @@
   <button id="enter" class="sk go">Enter the gallery</button>
   <button id="tour" class="sk hide" style="display:none">Guided tour ▶</button>
   <button id="out" class="sk" style="display:none">Back outside</button>
+  <button id="bro" class="sk">Brochure</button>
   <button id="all" class="sk">All works</button>
 </div>
 
@@ -143,6 +269,6 @@
   <div class="grid"></div>
 </div>
 
-<script type="module" src="./js/main.js?cb=11"></script>
+<script type="module" src="./js/main.js?cb=15"></script>
 </body>
 </html>
