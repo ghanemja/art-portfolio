@@ -29,7 +29,9 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.NoToneMapping;          // gouache: colours as painted
 document.body.prepend(renderer.domElement);
-const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.08, 1400);
+// (outside the near plane is 0.5: at 0.08 the far mountains' depth was too coarse to keep their
+// ink behind them, and it flickered through as black; inside, close to the paintings, it's 0.05)
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.5, 1400);
 addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
@@ -139,7 +141,7 @@ async function enter() {
     createVisitors(inside, gal, { me }).then(v => { visitors = v; }, (e) => console.warn('no visitors', e));   // (they stroll in while you look about)
   }
   me.pos.copy(gal.start); me.yaw = 0; me.pitch = 0; auto = null;
-  camera.fov = 62; camera.updateProjectionMatrix();
+  camera.fov = 62; camera.near = 0.05; camera.far = 200; camera.updateProjectionMatrix();
   mode = 'inside'; setUI(); music.setPlace('inside');
   applyLook();
   fadeIn();
@@ -149,7 +151,7 @@ async function leave() {
   if (mode !== 'inside') return;
   mode = 'going'; tour = null; auto = null; closeAll();
   await fadeOut();
-  camera.fov = 45; camera.updateProjectionMatrix();
+  camera.fov = 45; camera.near = 0.5; camera.far = 1400; camera.updateProjectionMatrix();
   camera.position.set(0, 2.4, DOOR_Z + 9); camera.lookAt(0, 1.8, DOOR_Z);
   orbit.target.set(0, 2.2, MUSEUM_Z - 4);
   // back off to the usual view

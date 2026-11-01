@@ -239,25 +239,34 @@ function landscape(R) {
     }
     im.count = k; im.userData.noInk = true; g.add(im);
   }
-  // mountains round the horizon, snow on the tall ones
+  // mountains round the horizon, snow on the tall ones. Each is welded BEFORE it's roughened
+  // (roughening first gave the seam's two copies different nudges: a crack down one side, and
+  // the ink behind it showed through as a black wedge), the bumps follow the angle round it so
+  // they meet at the seam, and the snow is painted on (no separate cap to float or poke through).
   {
-    const mg = [], sg = [];
+    const mg = [], rock = new THREE.Color(0x9aa6b8), rockD = new THREE.Color(0x8794a8), snow = new THREE.Color(PAL.snow);
     for (let i = 0; i < 26; i++) {
-      const a = i / 26 * Math.PI * 2 + R() * 0.15, d = 380 + R() * 60, h = 60 + R() * 70, r = 55 + R() * 40;
-      const cone = new THREE.ConeGeometry(r, h, 9, 4); cone.translate(0, h / 2, 0);
-      const cp = cone.attributes.position;
-      for (let j = 0; j < cp.count; j++) { const y = cp.getY(j); if (y > 0.5 && y < h - 0.5) { const k = 1 + (_h(j, i) - 0.5) * 0.25; cp.setX(j, cp.getX(j) * k); cp.setZ(j, cp.getZ(j) * k); } }
-      cone.deleteAttribute('uv');
-      const cm = mergeVertices(cone); cm.computeVertexNormals();
+      const a = i / 26 * Math.PI * 2 + R() * 0.15, d = 380 + R() * 60, h = 60 + R() * 70, r = 55 + R() * 40, sd = R() * 100;
+      const cone = new THREE.ConeGeometry(r, h, 20, 8, true); cone.translate(0, h / 2, 0);
+      cone.deleteAttribute('uv'); cone.deleteAttribute('normal');
+      const cm = mergeVertices(cone, 1e-3), cp = cm.attributes.position;
+      for (let j = 0; j < cp.count; j++) {
+        const x = cp.getX(j), y = cp.getY(j), z = cp.getZ(j);
+        if (y > h - 0.5) continue;                                     // (the peak stays a point)
+        const ang = Math.atan2(z, x), k = 1 + (fbm(Math.cos(ang) * 1.6 + sd, Math.sin(ang) * 1.6 + y / h * 2.5) - 0.5) * 0.35;
+        cp.setX(j, x * k); cp.setZ(j, z * k);
+      }
+      cm.computeVertexNormals();
+      colorGeo(cm, (c, x, y, z) => {
+        const ang = Math.atan2(z, x), line = h * (0.7 + 0.08 * Math.sin(ang * 5 + sd));
+        c.copy(rock).lerp(rockD, fbm(x * 0.05 + sd, y * 0.05));
+        if (h > 95 && y > line) c.copy(snow);
+      });
       cm.translate(Math.sin(a) * d, 20, Math.cos(a) * d);
       mg.push(cm);
-      if (h > 95) {
-        const sh = 0.28 * h, snow = new THREE.ConeGeometry(r * 0.28 * 1.04, sh, 9, 1); snow.translate(Math.sin(a) * d, 20 + h - sh / 2 + 0.3, Math.cos(a) * d); snow.deleteAttribute('uv'); sg.push(snow);
-      }
     }
-    const M = new THREE.Mesh(mergeGeometries(mg), paint(0x9aa6b8, { hatch: 0.5 }));
+    const M = new THREE.Mesh(mergeGeometries(mg), paint(0xffffff, { vertexColors: true, hatch: 0.5 }));
     g.add(M);
-    if (sg.length) g.add(new THREE.Mesh(mergeGeometries(sg), paint(PAL.snow, { hatch: 0 })));
     ink(M, 'heavy');
   }
   return g;

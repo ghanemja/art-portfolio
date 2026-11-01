@@ -13,3 +13,5 @@
 - ✅ Phone D-pad inside the museum (walk ▲▼, turn ◀▶)
 - ✅ Fixed the black band round the floating island's rim
 - ✅ Nature soundtrack: kalimba, pad, chimes over wind, waterfall and birdsong (sound button / M to mute)
+- ✅ Every module cache-busted (scripts/bump-cache.py) so fixes reach browsers right away
+- ✅ Fixed the glitching mountain tops (seam crack + depth precision); smoother mountains, painted snow

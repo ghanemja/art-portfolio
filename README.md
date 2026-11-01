@@ -45,6 +45,7 @@ Settings → Pages → *Deploy from a branch* → pick the branch and `/ (root)`
 - `js/loading.js`: the loading screen, where you unwrap the paintings.
 - `js/visitors.js`: the other visitors. They are Citizen Maker models that walk between paintings on a grid path.
 - `js/style.js`: art-heist's gouache paint and boiling ink lines.
+- `scripts/bump-cache.py`: run it after changing anything in `js/`. It gives every module a new version tag in `index.html`, so visitors' browsers don't keep the old files.
 - `scripts/smoke.mjs`: a headless test with Playwright. It fails on any console error and saves screenshots to `scripts/shots/`.
 
 ## License
