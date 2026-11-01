@@ -68,6 +68,9 @@ function restyle(root) {
     o.raycast = () => {};                       // (never in the way of a click on a painting)
   });
   ink(root, 'fine');
+  // their skinned bounds are the rest pose's, so up close the body was culled as off-screen
+  // while its ink hull (never culled) still drew: a black figure. Ten people: just draw them.
+  root.traverse((o) => { if (o.isMesh) o.frustumCulled = false; });
   return root;
 }
 

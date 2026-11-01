@@ -10,7 +10,7 @@ import { buildGallery } from './gallery.js';
 import { createViewer } from './viewer.js';
 import { createVisitors } from './visitors.js';
 import { createUnwrap } from './loading.js';
-import { ARTIST, WORKS } from './collection.js';
+import { ARTIST, WORKS, TOUR } from './collection.js';
 
 const $ = (s) => document.querySelector(s);
 const coarse = matchMedia('(pointer: coarse)').matches;
@@ -246,7 +246,7 @@ function hover(x, y) {
     else if (hit?.object === gal.floor) cursor = 'crosshair';
   }
   cv.style.cursor = cursor;
-  label.classList.toggle('hide', !over); if (over) label.textContent = over;
+  if (over) { label.textContent = over; label.classList.remove('hide'); } else if (!tour) label.classList.add('hide');   // (the tour keeps its caption)
 }
 
 // ── the close look ──
@@ -286,15 +286,19 @@ $('#ix').onclick = () => index.classList.add('hide');
 function closeAll() { closeView(); index.classList.add('hide'); }
 
 // ── the guided tour: from painting to painting, a pause at each ──
-function stopTour() { if (tour) { tour = null; setUI(); } }
+function stopTour() { if (tour) { tour = null; setUI(); label.classList.add('hide'); } }
 $('#tour').onclick = () => {
   if (tour) { stopTour(); return; }
   closeAll();
-  // start from the painting nearest where you stand
-  let best = 0, bd = 1e9;
-  for (const p of gal.pieces) { const d = p.center.distanceTo(me.pos); if (d < bd) { bd = d; best = p.i; } }
-  tour = { k: best, wait: 0 }; goToWork(best); setUI();
+  tour = { k: 0, wait: 0 }; tourStop(); setUI();
 };
+// the tour visits just the featured paintings (collection.js TOUR), round and round
+const tourList = () => { const l = TOUR.map(f => WORKS.findIndex(w => w.file === f)).filter(i => i >= 0); return l.length ? l : WORKS.map((_, i) => i); };
+function tourStop() {
+  const l = tourList(), i = l[tour.k % l.length];
+  goToWork(i);
+  label.textContent = `${WORKS[i].title} · ${tour.k % l.length + 1} of ${l.length}`; label.classList.remove('hide');
+}
 $('#enter').onclick = enter;
 $('#out').onclick = leave;
 
@@ -334,7 +338,7 @@ function frame() {
     }
     if (tour && !auto && viewing < 0) {
       tour.wait += dt;
-      if (tour.wait > 4.5) { tour.wait = 0; tour.k = (tour.k + 1) % WORKS.length; goToWork(tour.k); }
+      if (tour.wait > 7) { tour.wait = 0; tour.k++; tourStop(); }
     }
     me.pos.y = gal.EYE + Math.sin(t * 1.3) * 0.004;
     applyLook();

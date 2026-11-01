@@ -43,7 +43,7 @@ export function createViewer(renderer, textures) {
     const w = WORKS[i], [style, finish] = frameStyle(i);
     size = frameSize(w.w / w.h);
     frame = new THREE.Group(); holder.add(frame);
-    const F = ornateFrame(size.ow, size.oh, frame, style, { finish, art: textures.get(w.file) });
+    const F = ornateFrame(size.ow, size.oh, frame, style, { finish, art: textures.get(w.file), shape: w.shape || 'rect' });
     F.traverse(o => { if (o.isMesh && Math.max(o.scale.x, o.scale.y) < 0.012) o.userData.noInk = true; });
     ink(frame, 'mid');
     const canvas = F.userData.canvas;

@@ -249,7 +249,7 @@ export function buildGallery(scene, { textures }) {
     const g = new THREE.Group(); g.position.set(x, HANG_Y, z); g.rotation.y = ry; FG.add(g);
     const [style, finish] = frameStyle(i);
     const tex = textures.get(work.file);
-    const F = ornateFrame(sz.ow, sz.oh, g, style, { finish, art: tex });
+    const F = ornateFrame(sz.ow, sz.oh, g, style, { finish, art: tex, shape: work.shape || 'rect' });   // (round canvases: an oval frame)
     const canvas = F.userData.canvas;
     canvas.userData.work = i;
     // the wires up to the picture rail

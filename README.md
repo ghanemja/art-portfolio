@@ -23,9 +23,13 @@ Settings → Pages → *Deploy from a branch* → pick the branch and `/ (root)`
 
 - `js/collection.js` lists every work in hanging order: title, year, medium, and an optional note. It also holds the artist
   name, the name carved over the portico, and links.
-- Put a new image in `artworks/` (jpg), run `python3 scripts/make-web.py` (needs Pillow). It writes
-  the small in-world copy to `artworks/web/` and prints the row to paste into `collection.js`.
+- Put the photo in `artworks/originals/` and add its row to `collection.js`, then run
+  `python3 scripts/prep-art.py` (needs Pillow and numpy). It crops away the wall or backdrop
+  around the canvas, turns sideways photos upright (its `ROTATE` list), spots round canvases
+  so they hang in oval frames, writes `artworks/<name>.jpg` and `artworks/web/<name>.webp`, and
+  updates the size and shape in `collection.js`. You can fix a bad crop by hand in its `CROP` list.
   The hall gets longer to fit the collection.
+- `TOUR` in `collection.js` lists the stops of the guided tour.
 
 ## Layout
 
