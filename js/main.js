@@ -9,6 +9,7 @@ import { buildIsland, MUSEUM_Z, DOOR_Z } from './island.js';
 import { buildGallery } from './gallery.js';
 import { createViewer } from './viewer.js';
 import { createVisitors } from './visitors.js';
+import { createUnwrap } from './loading.js';
 import { ARTIST, WORKS } from './collection.js';
 
 const $ = (s) => document.querySelector(s);
@@ -35,6 +36,7 @@ addEventListener('resize', () => {
 
 // ── load: the fonts the canvases letter with, then every painting's small copy ──
 const fill = $('#load .fill');
+const unwrap = createUnwrap($('#load'), WORKS.length);   // the parcels (loading.js)
 await Promise.all(['700 40px Caveat', '600 40px Caveat', '400 20px "Patrick Hand"'].map(f => document.fonts.load(f).catch(() => {})));
 const textures = new Map();
 {
@@ -44,7 +46,7 @@ const textures = new Map();
   await Promise.all(WORKS.map(w => new Promise((res) => {
     const ok = (t) => {
       t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = Math.min(8, maxAniso);
-      textures.set(w.file, t); fill.style.width = (++done / WORKS.length * 100) + '%'; res();
+      textures.set(w.file, t); fill.style.width = (++done / WORKS.length * 100) + '%'; unwrap.add(t.image, w.title); res();
     };
     loader.load(`./artworks/web/${w.file}.webp`, ok, undefined, () => loader.load(`./artworks/${w.file}.jpg`, ok, undefined, () => {
       // a missing picture: a blank canvas, so the hang still works
@@ -56,6 +58,8 @@ const textures = new Map();
 
 const viewer = createViewer(renderer, textures);
 let visitors = null;
+
+await unwrap.finish();                        // let the last parcel land
 
 // ── outside ──
 const outside = new THREE.Scene();
@@ -347,4 +351,5 @@ function frame() {
 mode = 'outside'; setUI();
 requestAnimationFrame(frame);
 $('#load').classList.add('hide');
+setTimeout(() => unwrap.stop(), 700);
 window.__portfolio = { enter, leave, openView, goToWork, get mode() { return mode; }, get gal() { return gal; }, get visitors() { return visitors; } };   // (for the smoke test)
