@@ -43,4 +43,7 @@ Settings → Pages → *Deploy from a branch* → pick the branch and `/ (root)`
 
 ## License
 
-MIT. See [LICENSE](LICENSE). The fonts (Caveat, Patrick Hand) are under the SIL Open Font License.
+© 2026 Janelle Ghanem. **All rights reserved.** That covers the paintings, the images of them,
+the models and the code. You may not copy, reuse, sell, or use any of it for AI training without
+written permission. See [LICENSE](LICENSE). The fonts (Caveat, Patrick Hand) are under the SIL
+Open Font License.

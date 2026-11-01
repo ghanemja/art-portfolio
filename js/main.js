@@ -16,7 +16,7 @@ const coarse = matchMedia('(pointer: coarse)').matches;
 
 // ── the page's words ──
 $('#card h1').textContent = ARTIST.name;
-$('#card p').innerHTML = `${ARTIST.tagline}` + (ARTIST.links?.length ? ' · ' + ARTIST.links.map(([t, u]) => `<a href="${u}" target="_blank" rel="noopener">${t}</a>`).join(' · ') : '');
+$('#card p').innerHTML = `${ARTIST.tagline} · © ${ARTIST.name}, all rights reserved` + (ARTIST.links?.length ? ' · ' + ARTIST.links.map(([t, u]) => `<a href="${u}" target="_blank" rel="noopener">${t}</a>`).join(' · ') : '');
 const HINT_OUT = coarse ? 'drag to fly round · pinch to zoom · tap the door to go in' : 'drag to fly round · scroll to zoom · click the open door to go in';
 const HINT_IN = coarse ? 'drag to look · tap the floor to walk · tap a painting' : 'drag to look · WASD / arrows or click the floor to walk · click a painting';
 
