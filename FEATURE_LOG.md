@@ -9,3 +9,4 @@
 - ✅ Fixed sideways paintings and cropped the backdrop out of the photos (scripts/prep-art.py); round canvases hang in oval frames
 - ✅ Guided tour visits the horses, the castle, the black-and-white ship and the harbour
 - ✅ Fixed visitors turning black up close
+- ✅ Titles for every painting (made up from what's in each)
