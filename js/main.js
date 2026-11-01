@@ -94,6 +94,7 @@ function setUI() {
   $('#tour').classList.toggle('hide', !inn);
   $('#tour').textContent = tour ? 'Stop the tour ■' : 'Guided tour ▶';
   $('#hint').textContent = inn ? HINT_IN : HINT_OUT;
+  document.body.classList.toggle('pad', inn && PAD);
 }
 
 // the intro: swoop in from far out over the landscape
@@ -179,6 +180,16 @@ function goToWork(i) {
 
 // keys
 const keys = new Set();
+// phones: the on-screen D-pad (inside only) holds down the same keys the arrows do
+const PAD = coarse || navigator.maxTouchPoints > 0 || new URLSearchParams(location.search).has('pad');
+for (const b of document.querySelectorAll('#pad button')) {
+  const k = b.dataset.k;
+  const down = (e) => { e.preventDefault(); keys.add(k); b.classList.add('on'); auto = null; stopTour(); try { b.setPointerCapture(e.pointerId); } catch { /* (no capture: pointerup still ends it) */ } };
+  const up = () => { keys.delete(k); b.classList.remove('on'); };
+  b.addEventListener('pointerdown', down);
+  for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(ev, up);
+  b.addEventListener('contextmenu', (e) => e.preventDefault());
+}
 addEventListener('keydown', (e) => {
   if (e.target.closest?.('input, textarea')) return;
   const k = e.key.toLowerCase();
@@ -356,4 +367,4 @@ mode = 'outside'; setUI();
 requestAnimationFrame(frame);
 $('#load').classList.add('hide');
 setTimeout(() => unwrap.stop(), 700);
-window.__portfolio = { enter, leave, openView, goToWork, get mode() { return mode; }, get gal() { return gal; }, get visitors() { return visitors; } };   // (for the smoke test)
+window.__portfolio = { enter, leave, openView, goToWork, get mode() { return mode; }, get gal() { return gal; }, get visitors() { return visitors; }, me };   // (for the smoke test)

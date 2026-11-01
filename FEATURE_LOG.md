@@ -10,3 +10,5 @@
 - ✅ Guided tour visits the horses, the castle, the black-and-white ship and the harbour
 - ✅ Fixed visitors turning black up close
 - ✅ Titles for every painting (made up from what's in each)
+- ✅ Phone D-pad inside the museum (walk ▲▼, turn ◀▶)
+- ✅ Fixed the black band round the floating island's rim

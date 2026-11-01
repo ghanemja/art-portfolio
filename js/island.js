@@ -85,9 +85,12 @@ function islandBody({ rim = rimR, depth = 16, lump = 1, seed = 0, flat = inMuseu
     for (let s = 0; s < segs; s++) {
       const a = s / segs * Math.PI * 2;
       const lumpN = fbm(Math.cos(a) * 2.2 + seed, Math.sin(a) * 2.2 + t * 4.5, 4);
-      const shape = Math.pow(1 - t, 0.75) * (1 + 0.18 * Math.sin(Math.PI * t)) * (0.92 + 0.32 * lumpN * lump);
+      // (at the rim (t 0) exactly the grass top's edge: wider, and from above you looked down
+      // past the grass into the open rock, drawn only by its ink: a black band round the island)
+      const lumpK = THREE.MathUtils.smoothstep(t, 0, 0.18);
+      const shape = Math.pow(1 - t, 0.75) * (1 + 0.18 * Math.sin(Math.PI * t)) * (1 + (0.92 + 0.32 * lumpN * lump - 1) * lumpK);
       const R = rim(a) * shape + (t === 1 ? 0 : 0.0);
-      const y = -0.45 - t * depth * (0.85 + 0.3 * fbm(Math.cos(a) * 1.3 + 3, Math.sin(a) * 1.3 + seed)) - (t > 0 ? 0.25 * Math.sin(a * 7 + j) * lump : 0);
+      const y = -0.45 - t * depth * (0.85 + 0.3 * fbm(Math.cos(a) * 1.3 + 3, Math.sin(a) * 1.3 + seed)) - 0.25 * Math.sin(a * 7 + j) * lump * lumpK;
       pos.push(Math.sin(a) * R, y, Math.cos(a) * R);
     }
   }
