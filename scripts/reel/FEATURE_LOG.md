@@ -1,1 +1,0 @@
-- ✅ Instagram Reel: 6 lessons learned over shots of the island, the loading screens, the hall and the paintings (scripts/reel/), with a timed voiceover script
