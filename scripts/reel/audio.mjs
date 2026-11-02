@@ -5,6 +5,10 @@ const LEN = +(process.env.LEN || 46), IN_AT = +(process.env.IN_AT || 23), OUT_AT
 const b = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
 const p = await b.newPage();
 p.on('pageerror', e => console.log('ERR', String(e)));
+// no glassy chimes in the Reel (they ring on): serve music.js with the chime call taken out
+const ROOT = process.env.ROOT || new URL('../../', import.meta.url).pathname;
+await p.route('http://localhost:8123/js/music.js', r => r.fulfill({ contentType: 'application/javascript',
+  body: fs.readFileSync(ROOT + '/js/music.js', 'utf8').replace(/\bchime\(C\.mel/, 'void (C.mel') }));
 await p.route('http://localhost:8123/__rec.html', r => r.fulfill({ contentType: 'text/html', body: `<!doctype html><script type="module">
   const conn = AudioNode.prototype.connect;
   AudioNode.prototype.connect = function (to, ...a) {

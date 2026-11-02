@@ -15,7 +15,7 @@ PY
 rm -rf frames loadframes seq out
 node record.mjs      # the 3D shots -> frames/
 node loading.mjs     # the loading screens -> loadframes/
-node audio.mjs       # the site's soundtrack, recorded in real time -> nature.webm
+ROOT="$ROOT/" node audio.mjs       # the site's soundtrack, recorded in real time -> nature.webm
 # the cut: hook + lesson 1, then the loading screens (lesson 2), then the rest
 python3 - <<'PY'
 import os

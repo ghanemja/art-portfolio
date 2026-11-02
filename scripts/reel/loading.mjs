@@ -5,7 +5,8 @@ const PREVIEW = !!process.env.PREVIEW, DT = 1000 / 30;
 const UN = +(process.env.UN || 165), HN = +(process.env.HN || 105), WARM = +(process.env.WARM || 90), EVERY = +(process.env.EVERY || 30);
 fs.mkdirSync('loadframes', { recursive: true });
 const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
-const p = await b.newPage({ viewport: PREVIEW ? { width: 540, height: 960 } : { width: 1080, height: 1920 } });
+// (the unwrapping is filmed 300px short: captions.py pads the top with paper, so the card sits above the hung paintings)
+const p = await b.newPage({ viewport: PREVIEW ? { width: 540, height: 810 } : { width: 1080, height: 1620 } });
 await p.addInitScript({ path: 'vclock.js' });
 await p.addInitScript(() => addEventListener('DOMContentLoaded', () => window.__freeze()));
 p.on('pageerror', e => console.log('ERR', String(e)));
@@ -30,6 +31,7 @@ for (let i = 0; i < UN; i++) {
 }
 console.log('U', UN, ((Date.now() - t0) / 1000).toFixed(0) + 's');
 // the hanging screen: shown over everything, its CSS animations stepped by hand
+await p.setViewportSize(PREVIEW ? { width: 540, height: 960 } : { width: 1080, height: 1920 });
 for (const r of held.splice(0)) await r.continue().catch(() => {}); await p.unroute('**/artworks/web/*.webp');
 await p.evaluate(() => {
   const st = document.createElement('style');

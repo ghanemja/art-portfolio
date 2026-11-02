@@ -39,7 +39,10 @@ def card(label, head, sub):
 cards = [(a, b, card(l, h, s)) for a, b, l, h, s in CARDS]
 files = sorted(f for f in os.listdir(SRC) if f.endswith('.jpg'))
 for f in files:
-  n = int(f[1:6]); fr = Image.open(os.path.join(SRC, f)).convert('RGB').resize((W, H), Image.LANCZOS).convert('RGBA')
+  n = int(f[1:6]); src = Image.open(os.path.join(SRC, f)).convert('RGB')
+  if src.width == W and src.height < H:          # a short frame (the unwrapping): pad the top with its own paper colour
+    pad = Image.new('RGB', (W, H), src.getpixel((W // 2, 4))); pad.paste(src, (0, H - src.height)); src = pad
+  fr = src.resize((W, H), Image.LANCZOS).convert('RGBA')
   for i, (a, b, c) in enumerate(cards):
     if not (a <= n < b): continue
     tin, tout = n - a, b - 1 - n
