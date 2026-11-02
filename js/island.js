@@ -289,56 +289,101 @@ function landscape(R) {
     const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3)); rg.setIndex(ix); rg.computeVertexNormals();
     const rm = new THREE.Mesh(rg, paint(PAL.water, { hatch: 0 })); rm.userData.noInk = true; g.add(rm);
   }
-  // woods: little cone trees in clumps (instanced: one draw)
+  // woods: little 3D trees in clumps, autumn broadleaves (a lumpy round crown on a trunk) and
+  // spruces (three tiers of skirts), colour per tree; instanced, so each kind is one draw
   {
-    const tg = new THREE.ConeGeometry(2.4, 7, 7); tg.translate(0, 3.5, 0);
-    const COUNT = 900, im = new THREE.InstancedMesh(tg, paint(0xffffff, { hatch: 0.4, unique: true }), COUNT);
-    const woodCols = [0x6f9a64, 0x6f9a64, 0xd9773a, 0xc8503a, 0xe3ad45, 0xb8642e].map(h => new THREE.Color(h));   // (fall woods, a few pines still green)
-    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), v = new THREE.Vector3();
+    const lumpy = (geo, amp, seed) => { const p = geo.attributes.position; for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i), k = 1 + (fbm(x * 0.9 + seed, y * 0.9 + z * 0.7) - 0.5) * amp; p.setXYZ(i, x * k, y * k, z * k); } return geo; };
+    const tint = (geo, r, gg, b) => { const n = geo.attributes.position.count, c = new Float32Array(n * 3); for (let i = 0; i < n; i++) { c[i * 3] = r; c[i * 3 + 1] = gg; c[i * 3 + 2] = b; } geo.setAttribute('color', new THREE.BufferAttribute(c, 3)); return geo; };
+    const prep = (geo) => { geo.deleteAttribute('uv'); geo.deleteAttribute('normal'); const m = mergeVertices(geo, 1e-3); return m; };
+    const trunkG = () => tint(prep(new THREE.CylinderGeometry(0.22, 0.32, 2.6, 6).translate(0, 1.3, 0)), 0.42, 0.32, 0.3);
+    // a broadleaf: one big lumpy crown and a smaller one beside it
+    const broad = (() => {
+      const a = lumpy(prep(new THREE.IcosahedronGeometry(2.2, 1)), 0.55, 3).scale(1, 0.9, 1).translate(0, 4.2, 0);
+      const b = lumpy(prep(new THREE.IcosahedronGeometry(1.4, 1)), 0.5, 7).translate(1.2, 3.5, 0.6);
+      const g2 = mergeGeometries([tint(a, 1, 1, 1), tint(b, 0.86, 0.86, 0.86), trunkG()]); g2.computeVertexNormals(); return g2;
+    })();
+    // a spruce: three tiers, wider at the bottom
+    const spruce = (() => {
+      const tiers = [[2.0, 3.0, 2.6], [1.55, 2.6, 4.2], [1.0, 2.2, 5.7]].map(([r, h, y]) => tint(prep(new THREE.ConeGeometry(r, h, 9, 1, true)).translate(0, y, 0), 1, 1, 1));
+      const g2 = mergeGeometries([...tiers, trunkG()]); g2.computeVertexNormals(); return g2;
+    })();
+    const kinds = [
+      { geo: broad, n: 1500, cols: [0xd9773a, 0xc8503a, 0xe3ad45, 0xb8642e, 0xd99a3c, 0xa8452e, 0x9aa84a] },
+      { geo: spruce, n: 800, cols: [0x4f6e4a, 0x58784f, 0x46634a] },
+    ];
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), v = new THREE.Vector3(), col = new THREE.Color();
     const ray = new THREE.Raycaster(), down = new THREE.Vector3(0, -1, 0);
     land.updateMatrixWorld(true);
-    let k = 0;
-    for (let c = 0; c < 60 && k < COUNT; c++) {
-      const cx = (R() - 0.5) * 640, cz = (R() - 0.5) * 640;
-      if (Math.abs(cz - river(cx)) < 18 || Math.hypot(cx, cz) < 30) continue;
-      for (let t = 0; t < 15 && k < COUNT; t++) {
-        const x = cx + (R() - 0.5) * 50, z = cz + (R() - 0.5) * 50;
-        ray.set(v.set(x, 200 + GROUND_Y, z), down);
+    const clumps = [];
+    for (let c = 0; c < 90; c++) {
+      const cx = (R() - 0.5) * 620, cz = (R() - 0.5) * 620;
+      if (Math.abs(cz - river(cx)) < 20 || Math.hypot(cx, cz) < 40 || Math.hypot(cx, cz) > 235) continue;
+      clumps.push([cx, cz, 18 + R() * 30, R() < 0.35]);            // [x, z, radius, mostly spruce]
+    }
+    for (const K of kinds) {
+      const im = new THREE.InstancedMesh(K.geo, paint(0xffffff, { vertexColors: true, hatch: 0.35, unique: true }), K.n);
+      let k = 0;
+      for (let tries = 0; tries < K.n * 4 && k < K.n; tries++) {
+        const [cx, cz, cr, sp] = clumps[Math.floor(R() * clumps.length)];
+        if ((K.geo === spruce) !== (R() < (sp ? 0.8 : 0.15))) continue;
+        const a = R() * 6.28, rr = cr * Math.sqrt(R()), x = cx + Math.cos(a) * rr, z = cz + Math.sin(a) * rr;
+        if (Math.abs(z - river(x)) < 12) continue;
+        ray.set(v.set(x, 260 + GROUND_Y, z), down);
         const hit = ray.intersectObject(land)[0]; if (!hit) continue;
-        const s = 0.7 + R() * 0.7;
-        m4.compose(v.set(x, hit.point.y - GROUND_Y, z), q, sc.set(s, s * (0.8 + R() * 0.5), s));
-        im.setColorAt(k, woodCols[Math.floor(R() * woodCols.length)]); im.setMatrixAt(k++, m4);
+        const s = 0.75 + R() * 0.6;
+        q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), R() * 6.28);
+        m4.compose(v.set(x, hit.point.y - GROUND_Y - 0.3, z), q, sc.set(s, s * (0.85 + R() * 0.35), s));
+        col.setHex(K.cols[Math.floor(R() * K.cols.length)]).offsetHSL(0, (R() - 0.5) * 0.1, (R() - 0.5) * 0.08);
+        im.setColorAt(k, col); im.setMatrixAt(k++, m4);
       }
+      im.count = k; im.userData.noInk = true; g.add(im);
     }
-    im.count = k; im.userData.noInk = true; g.add(im);
   }
-  // mountains round the horizon, snow on the tall ones. Each is welded BEFORE it's roughened
-  // (roughening first gave the seam's two copies different nudges: a crack down one side, and
-  // the ink behind it showed through as a black wedge), the bumps follow the angle round it so
-  // they meet at the seam, and the snow is painted on (no separate cap to float or poke through).
+  // the mountains: one ring of real terrain round the horizon, not separate cones. Heights from
+  // ridged noise (sharp crests, eroded valleys between), worked out on world x/z so it closes
+  // seamlessly; painted by height and slope: meadow at the foot, autumn forest up the lower
+  // slopes, grey rock on anything steep, snow on the high ground where it can lie.
   {
-    const mg = [], rock = new THREE.Color(0x9aa6b8), rockD = new THREE.Color(0x8794a8), snow = new THREE.Color(PAL.snow);
-    for (let i = 0; i < 26; i++) {
-      const a = i / 26 * Math.PI * 2 + R() * 0.15, d = 380 + R() * 60, h = 60 + R() * 70, r = 55 + R() * 40, sd = R() * 100;
-      const cone = new THREE.ConeGeometry(r, h, 20, 8, true); cone.translate(0, h / 2, 0);
-      cone.deleteAttribute('uv'); cone.deleteAttribute('normal');
-      const cm = mergeVertices(cone, 1e-3), cp = cm.attributes.position;
-      for (let j = 0; j < cp.count; j++) {
-        const x = cp.getX(j), y = cp.getY(j), z = cp.getZ(j);
-        if (y > h - 0.5) continue;                                     // (the peak stays a point)
-        const ang = Math.atan2(z, x), k = 1 + (fbm(Math.cos(ang) * 1.6 + sd, Math.sin(ang) * 1.6 + y / h * 2.5) - 0.5) * 0.35;
-        cp.setX(j, x * k); cp.setZ(j, z * k);
+    const ridged = (x, z) => {
+      let sum = 0, amp = 0.55, f = 1, w = 1;
+      for (let o = 0; o < 6; o++) {
+        let n = 1 - Math.abs(noise(x * f + o * 17.3, z * f - o * 9.1) * 2 - 1); n *= n; n *= w; w = Math.min(1, n * 1.6);
+        sum += n * amp; f *= 2.03; amp *= 0.5;
       }
-      cm.computeVertexNormals();
-      colorGeo(cm, (c, x, y, z) => {
-        const ang = Math.atan2(z, x), line = h * (0.7 + 0.08 * Math.sin(ang * 5 + sd));
-        c.copy(rock).lerp(rockD, fbm(x * 0.05 + sd, y * 0.05));
-        if (h > 95 && y > line) c.copy(snow);
-      });
-      cm.translate(Math.sin(a) * d, 20, Math.cos(a) * d);
-      mg.push(cm);
+      return sum;
+    };
+    const R0 = 300, R1 = 640, NA = 360, NR = 54, pos = [], idx = [];
+    const heightAt = (x, z) => {
+      const r = Math.hypot(x, z), env = THREE.MathUtils.smoothstep(r, R0 + 10, 430) * (1 - 0.3 * THREE.MathUtils.smoothstep(r, 520, R1));
+      const big = fbm(x * 0.004 + 5, z * 0.004);                                    // ranges and gaps along the ring
+      return -6 + env * (16 + 200 * Math.pow(ridged(x * 0.0036, z * 0.0036), 1.6) * (0.55 + 0.85 * big));
+    };
+    for (let j = 0; j <= NR; j++) {
+      const r = R0 + (R1 - R0) * Math.pow(j / NR, 1.15);
+      for (let i = 0; i < NA; i++) { const a = i / NA * Math.PI * 2, x = Math.sin(a) * r, z = Math.cos(a) * r; pos.push(x, heightAt(x, z), z); }
     }
-    const M = new THREE.Mesh(mergeGeometries(mg), paint(0xffffff, { vertexColors: true, hatch: 0.5 }));
+    for (let j = 0; j < NR; j++) for (let i = 0; i < NA; i++) {
+      const a = j * NA + i, b = j * NA + (i + 1) % NA, c = (j + 1) * NA + i, d = (j + 1) * NA + (i + 1) % NA;
+      idx.push(a, c, b, b, c, d);
+    }
+    const mg = new THREE.BufferGeometry(); mg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); mg.setIndex(idx); mg.computeVertexNormals();
+    const P = mg.attributes.position, N = mg.attributes.normal, cols = new Float32Array(P.count * 3), c = new THREE.Color();
+    const meadow = new THREE.Color(0xbfae78), forests = [0x9a6a3a, 0x7d7a40, 0xb06a38, 0x55684a, 0x8e5a34].map(h => new THREE.Color(h));
+    const rockA = new THREE.Color(0x8f8b88), rockB = new THREE.Color(0x77798a), snow = new THREE.Color(0xf7f4ee), shade = new THREE.Color(0xc9d3e0);
+    for (let i = 0; i < P.count; i++) {
+      const x = P.getX(i), y = P.getY(i), z = P.getZ(i), slope = 1 - N.getY(i), nz = fbm(x * 0.03, z * 0.03);
+      c.copy(meadow);
+      const forestK = THREE.MathUtils.smoothstep(y, 2, 10) * (1 - THREE.MathUtils.smoothstep(y, 60 + nz * 25, 85 + nz * 25)) * (1 - THREE.MathUtils.smoothstep(slope, 0.45, 0.62));
+      c.lerp(forests[Math.floor(fbm(x * 0.02 + 3, z * 0.02) * 9) % forests.length], forestK * (0.6 + 0.4 * nz));
+      const rockK = Math.max(THREE.MathUtils.smoothstep(slope, 0.42, 0.6) * THREE.MathUtils.smoothstep(y, 10, 30), THREE.MathUtils.smoothstep(y, 70, 95));
+      c.lerp(rockA.clone().lerp(rockB, fbm(x * 0.05, z * 0.05 + 4)), rockK);
+      const snowK = THREE.MathUtils.smoothstep(y, 95 + nz * 25, 112 + nz * 25) * (1 - THREE.MathUtils.smoothstep(slope, 0.55, 0.75));
+      c.lerp(snow, snowK);
+      if (snowK > 0.5 && N.getX(i) * 0.6 + N.getZ(i) * 0.8 < 0) c.lerp(shade, 0.35);       // snow in shade goes blue-grey
+      cols[i * 3] = c.r; cols[i * 3 + 1] = c.g; cols[i * 3 + 2] = c.b;
+    }
+    mg.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+    const M = new THREE.Mesh(mg, paint(0xffffff, { vertexColors: true, hatch: 0.4, unique: true }));
     g.add(M);
     ink(M, 'heavy');
   }
@@ -406,7 +451,7 @@ function islet(R, r) {
 export function buildIsland(scene, { textures }) {
   const R = rng(11);
   scene.add(sky());
-  scene.fog = new THREE.Fog(0xf3e3c8, 120, 520);
+  scene.fog = new THREE.Fog(0xf3e3c8, 160, 760);      // (far enough that the ranges keep their shapes, hazing blue-pale with distance)
   scene.add(new THREE.HemisphereLight(0xfff6e8, 0xb7a9a0, 1.35));
   const sun = new THREE.DirectionalLight(0xfff1dc, 1.6); sun.position.set(40, 70, 50); scene.add(sun);
 

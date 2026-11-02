@@ -23,3 +23,4 @@
 - ✅ Elaborate mouldings: moulded skirting, chair rail, picture rail, crown cornice with dentils, framed wainscot panels, coffered ceiling with gilt rosettes, fluted pilasters
 - ✅ Sconces on partitions and pilasters; picture lights cast a warm wash on each painting
 - ✅ Realistic trees (branching trunks, crowns of thousands of fluttering leaves), leafy shrubs and cypresses; the grass carpeted with real-looking fallen leaves (oak, maple, elm) in drifts and heaps
+- ✅ Background woods are 3D trees (round autumn broadleaves, tiered spruces) in clumps; mountains are one ridged terrain range (meadow, autumn forest, rock, snow by height and slope)
