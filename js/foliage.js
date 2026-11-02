@@ -238,3 +238,44 @@ export function leafLitter(R, { count, heightAt, density, area }) {
   m.userData.noInk = true;
   return m;
 }
+
+// ── FRAMING: maple branches reaching in from the top corners of the view, as in a photo taken
+// from under a tree. Built in "view units" (1 = half the view's height, origin at the corner,
+// +x inward, −y down); main.js keeps them pinned to the camera. Red, scarlet and orange leaves,
+// thick at the ends, fluttering; the bark is inked like everything else ──
+export function framingBranch(R) {
+  const g = new THREE.Group();
+  const bark = [];
+  const main = [new THREE.Vector3(-0.2, 0.05, 0), new THREE.Vector3(0.2, -0.22, 0.05), new THREE.Vector3(0.55, -0.4, 0.1), new THREE.Vector3(0.9, -0.62, 0.12)];
+  bark.push(limb(main, 0.035, 0.008, 7));
+  const tips = [main[3]];
+  const curve = new THREE.CatmullRomCurve3(main);
+  // side shoots: some droop down, some reach up and in
+  for (let k = 0; k < 13; k++) {
+    const t = 0.1 + k / 13 * 0.85, p = curve.getPointAt(t);
+    const down = k % 3 !== 1, len = 0.2 + R() * 0.3;
+    const end = p.clone().add(new THREE.Vector3((R() - 0.2) * len * 0.8, down ? -len : len * 0.4, (R() - 0.5) * 0.15));
+    bark.push(limb([p, p.clone().lerp(end, 0.5).add(new THREE.Vector3(0.03, down ? 0.02 : 0.0, 0)), end], 0.012, 0.004, 5));
+    tips.push(end);
+  }
+  const barkMesh = new THREE.Mesh(mergeGeometries(bark), paint(0x4a3428));
+  g.add(barkMesh);
+  const S = stamper(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(), pos = new THREE.Vector3(), c = new THREE.Color();
+  const reds = [0xd8321e, 0xc4241c, 0xe8522a, 0xf07a2a, 0xb81e1e, 0xf0a030].map(h => new THREE.Color(h));
+  for (const tip of tips) {
+    const n = 90 + Math.floor(R() * 50), cr = 0.16 + R() * 0.08;
+    for (let i = 0; i < n; i++) {
+      const u = R() * 2 - 1, th = R() * Math.PI * 2, rr = cr * Math.cbrt(R());
+      pos.set(Math.sqrt(1 - u * u) * Math.cos(th) * rr * 1.4, u * rr, Math.sqrt(1 - u * u) * Math.sin(th) * rr * 0.6).add(tip);
+      e.set(Math.PI / 2 + (R() - 0.5) * 1.1, (R() - 0.5) * 0.9, R() * Math.PI * 2);    // facing the viewer, turned every way
+      const s = 0.085 + R() * 0.04; S.m4.compose(pos, q.setFromEuler(e), sc.set(s, s, s));
+      c.copy(reds[Math.floor(R() * reds.length)]).offsetHSL((R() - 0.5) * 0.02, 0, (R() - 0.5) * 0.12);
+      c.multiplyScalar(0.8 + 0.3 * Math.min(1, rr / cr));
+      S.add(LEAVES.maple, S.m4, c, R() * 6.28);
+    }
+  }
+  const leaves = new THREE.Mesh(S.build(), flutterMat({ hatch: 0.15 }));
+  leaves.material.fog = false; barkMesh.material.fog = false;
+  leaves.userData.noInk = true; g.add(leaves);
+  return g;
+}

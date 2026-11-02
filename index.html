@@ -96,6 +96,7 @@
   body.pad #bar { left: auto; right: max(14px, env(safe-area-inset-right)); transform: none; flex-direction: column; align-items: flex-end; gap: 8px; }
   body.pad #bar button.sk { font-size: 16px; padding: 6px 14px; }
   body.pad #hint { display: none; }
+  @media (max-width: 600px) { #hint { display: none; } }   /* (phones: the buttons wrap where it would sit) */
 
   /* the hand at the door holding out the brochure */
   #offer { right: 0; bottom: 120px; z-index: 15; display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
@@ -155,18 +156,18 @@
 { "imports": {
   "three": "https://unpkg.com/three@0.160.0/build/three.module.min.js",
   "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-  "./js/brochure.js": "./js/brochure.js?cb=32",
-  "./js/collection.js": "./js/collection.js?cb=32",
-  "./js/foliage.js": "./js/foliage.js?cb=32",
-  "./js/gallery.js": "./js/gallery.js?cb=32",
-  "./js/island.js": "./js/island.js?cb=32",
-  "./js/loading.js": "./js/loading.js?cb=32",
-  "./js/main.js": "./js/main.js?cb=32",
-  "./js/museum.js": "./js/museum.js?cb=32",
-  "./js/music.js": "./js/music.js?cb=32",
-  "./js/style.js": "./js/style.js?cb=32",
-  "./js/viewer.js": "./js/viewer.js?cb=32",
-  "./js/visitors.js": "./js/visitors.js?cb=32"
+  "./js/brochure.js": "./js/brochure.js?cb=39",
+  "./js/collection.js": "./js/collection.js?cb=39",
+  "./js/foliage.js": "./js/foliage.js?cb=39",
+  "./js/gallery.js": "./js/gallery.js?cb=39",
+  "./js/island.js": "./js/island.js?cb=39",
+  "./js/loading.js": "./js/loading.js?cb=39",
+  "./js/main.js": "./js/main.js?cb=39",
+  "./js/museum.js": "./js/museum.js?cb=39",
+  "./js/music.js": "./js/music.js?cb=39",
+  "./js/style.js": "./js/style.js?cb=39",
+  "./js/viewer.js": "./js/viewer.js?cb=39",
+  "./js/visitors.js": "./js/visitors.js?cb=39"
 } }
 </script>
 </head>
@@ -270,6 +271,6 @@
   <div class="grid"></div>
 </div>
 
-<script type="module" src="./js/main.js?cb=32"></script>
+<script type="module" src="./js/main.js?cb=39"></script>
 </body>
 </html>

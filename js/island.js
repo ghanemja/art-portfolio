@@ -218,22 +218,44 @@ function bush(R) {
 }
 
 // ── the sky: art-heist's painted gradient with paper tooth ──
+export const SUN_DIR = new THREE.Vector3(-0.72, 0.1, -0.68).normalize();   // low in the west, over the far range
 function sky() {
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false,
-    uniforms: { top: { value: new THREE.Color(0xa9c8d8) }, mid: { value: new THREE.Color(0xf6e7cc) }, low: { value: new THREE.Color(0xf3d2b6) } },
+    uniforms: { sun: { value: SUN_DIR } },
     vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-    fragmentShader: `uniform vec3 top, mid, low; varying vec3 vP;
+    fragmentShader: `uniform vec3 sun; varying vec3 vP;
+      float h1(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float n1(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(h1(i), h1(i + vec2(1, 0)), f.x), mix(h1(i + vec2(0, 1)), h1(i + vec2(1, 1)), f.x), f.y); }
+      float fb(vec2 p) { float s = 0.0, a = 0.5; for (int k = 0; k < 5; k++) { s += a * n1(p); p = p * 2.1 + 3.7; a *= 0.5; } return s; }
       void main(){
-        float y = vP.y + 0.12;
-        vec3 c = y > 0.0 ? mix(mid, top, smoothstep(0.0, 0.75, y)) : mix(mid, low, smoothstep(0.0, -0.5, y));
+        vec3 d = normalize(vP); float y = d.y;
+        float toSun = max(0.0, dot(normalize(vec3(d.x, 0.0, d.z)), normalize(vec3(sun.x, 0.0, sun.z))));
+        // the sky: gold at the horizon, peach, rose, up to a dusky violet-blue overhead; brightest toward the sun
+        vec3 c = mix(vec3(1.0, 0.72, 0.38), vec3(0.99, 0.52, 0.36), smoothstep(0.0, 0.14, y));
+        c = mix(c, vec3(0.88, 0.42, 0.5), smoothstep(0.12, 0.38, y));
+        c = mix(c, vec3(0.38, 0.36, 0.6), smoothstep(0.32, 0.9, y));
+        c = mix(c, vec3(1.0, 0.86, 0.6), pow(toSun, 6.0) * (1.0 - smoothstep(0.0, 0.4, y)) * 0.7);
+        if (y < 0.0) c = mix(vec3(1.0, 0.78, 0.55), vec3(0.88, 0.62, 0.55), smoothstep(0.0, -0.4, y));
+        // streaky clouds: long bands stretched along the sky, lit pink-orange from below, brighter toward the sun
+        float az = atan(d.z, d.x);
+        vec2 q = vec2(az * 2.2, y * 14.0 + sin(az * 3.0) * 0.6);
+        float band = fb(vec2(q.x * 0.9, q.y * 1.4)) * smoothstep(0.03, 0.1, y) * (1.0 - smoothstep(0.5, 0.75, y)) * 1.15;
+        float cl = smoothstep(0.4, 0.62, band + 0.14 * fb(q * vec2(4.0, 8.0)));
+        vec3 cloudCol = mix(vec3(0.93, 0.36, 0.38), vec3(1.0, 0.66, 0.36), toSun * 0.8 + 0.2 * smoothstep(0.3, 0.1, y));
+        cloudCol = mix(cloudCol, vec3(0.55, 0.38, 0.55), smoothstep(0.25, 0.6, y) * 0.6);   // higher up, violet
+        c = mix(c, cloudCol, cl * 0.9);
+        // the sun, sitting low, with a soft glow round it
+        float sd = max(0.0, dot(d, sun));
+        c += vec3(1.0, 0.8, 0.5) * (smoothstep(0.9993, 0.9997, sd) * 0.9 + pow(sd, 60.0) * 0.35);
         vec2 fc = gl_FragCoord.xy;
         float g = fract(sin(dot(floor(fc / 2.0), vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
         gl_FragColor = vec4(c * (1.0 + g * 0.03), 1.0);
         #include <colorspace_fragment>
       }`,
   });
-  const m = new THREE.Mesh(new THREE.SphereGeometry(600, 32, 16), mat);
+  const m = new THREE.Mesh(new THREE.SphereGeometry(900, 48, 24), mat);
   m.userData.noInk = true; m.frustumCulled = false; m.renderOrder = -10;
   return m;
 }
@@ -483,17 +505,24 @@ function mountainMat() {
         vec3 woods = mix(vec3(0.36, 0.3, 0.2), tree, 0.35 + 0.65 * dotk);
         float forestK = smoothstep(2.0, 10.0, h) * (1.0 - smoothstep(55.0 + big * 30.0, 75.0 + big * 30.0, h)) * (1.0 - smoothstep(0.45, 0.62, slope));
         col = mix(col, woods, forestK * smoothstep(0.2, 0.4, mid + 0.25));
-        // rock: grey and warm-brown strata following the height, broken by cracks and scree
-        float strata = smoothstep(0.2, 0.8, sin(h * 0.22 + mid * 3.0 + big * 5.0) * 0.5 + 0.5);
-        vec3 rock = mix(vec3(0.55, 0.52, 0.5), vec3(0.64, 0.58, 0.5), strata);
-        rock = mix(rock, vec3(0.47, 0.41, 0.36), smoothstep(0.55, 0.8, mf(xz * 0.04 + vec2(0.0, h * 0.03))) * 0.5);
-        rock *= 0.92 + 0.14 * fine;
-        rock = mix(rock, rock * 0.72, smoothstep(0.66, 0.7, mn(vec2(xz.x * 0.12 + xz.y * 0.05, h * 0.35))) * 0.8);      // cracks
+        // the fall line: which way is downhill here. Ridges and gullies run along it, the way
+        // water and ice carve a real mountain (noise stretched down the slope, not across it)
+        // (measured round the ring and up: an arc-length coordinate that's smooth everywhere, so
+        // the streaks run straight down the faces instead of swirling with every bump)
+        float arcU = atan(xz.y, xz.x) * length(xz);
+        vec2 fl = vec2(arcU * 0.16, h * 0.022 + mid * 0.6);
+        float gully = mf(fl), gully2 = mn(fl * vec2(3.1, 2.0) + 4.0);
+        float rib = smoothstep(0.35, 0.75, gully);                          // 1: a ridge rib, 0: down in a gully
+        // rock: warm red-brown and grey in big patches, lit ribs and shadowed gullies, scree below
+        vec3 rock = mix(vec3(0.56, 0.4, 0.33), vec3(0.6, 0.55, 0.52), smoothstep(0.35, 0.65, big));
+        rock = mix(rock, vec3(0.66, 0.47, 0.36), smoothstep(0.5, 0.8, mid) * 0.5);
+        rock *= 0.72 + 0.4 * rib + 0.1 * (gully2 - 0.5);
+        rock *= 0.95 + 0.1 * fine;
         float rockK = max(smoothstep(0.46, 0.64, slope) * smoothstep(8.0, 25.0, h), smoothstep(66.0 + big * 20.0, 88.0 + big * 20.0, h));
         col = mix(col, rock, rockK);
-        // snow: on the high ground where it can lie, streaking down the gullies
-        float streak = mf(vec2(xz.x * 0.09, xz.y * 0.09) + vec2(0.0, h * 0.06));
-        float line = 92.0 + big * 28.0 - streak * 22.0;
+        // snow: on the high ground, reaching furthest down the gullies, thin on the ribs
+        float streak = 1.0 - rib;
+        float line = 96.0 + big * 26.0 - streak * 26.0 + gully2 * 6.0;
         float snowK = smoothstep(line, line + 6.0, h) * (1.0 - smoothstep(0.58, 0.78, slope));
         vec3 snow = mix(vec3(0.97, 0.96, 0.94), vec3(0.78, 0.83, 0.9), smoothstep(0.1, -0.4, dot(N, normalize(vec3(0.45, 0.6, 0.55)))));
         col = mix(col, snow, snowK);
@@ -502,7 +531,7 @@ function mountainMat() {
       .replace('#include <dithering_fragment>', `{
         // aerial perspective: farther is paler and bluer, but never bleached away
         float d = length(vWP - cameraPosition), k = smoothstep(180.0, 900.0, d) * 0.55;
-        gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.86, 0.87, 0.88), k);
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.93, 0.74, 0.66), k);   // (sunset haze: rosy)
       }
       #include <dithering_fragment>`);
   };
@@ -537,7 +566,7 @@ function birds(R) {
     flocks.push({ kind: 'goose', members, r: 42 + f * 30 + R() * 15, y: 10 + f * 9 + R() * 6, a: R() * 6.28, sp: (0.05 + R() * 0.025) * (f % 2 ? -1 : 1), wob: R() * 6, scale: 2.4 });
   }
   // swallows round the island: each its own wandering loop
-  for (let k = 0; k < 12; k++) flocks.push({ kind: 'swallow', members: [[0, 0, 0]], r: 18 + R() * 16, y: 2 + R() * 8, a: R() * 6.28, sp: (0.25 + R() * 0.25) * (R() < 0.5 ? -1 : 1), wob: R() * 6, scale: 0.85 });
+  for (let k = 0; k < 12; k++) flocks.push({ kind: 'swallow', members: [[0, 0, 0]], r: 11 + R() * 6, y: 2 + R() * 8, a: R() * 6.28, sp: (0.25 + R() * 0.25) * (R() < 0.5 ? -1 : 1), wob: R() * 6, scale: 0.85 });
   // a pair of hawks circling high over the far mountains
   for (let k = 0; k < 2; k++) flocks.push({ kind: 'hawk', members: [[0, 0, 0]], r: 25 + R() * 15, y: 70 + R() * 30, a: R() * 6.28, sp: 0.06 + R() * 0.03, wob: R() * 6, scale: 3.2, cx: Math.sin(k * 2.6 + 0.8) * 380, cz: Math.cos(k * 2.6 + 0.8) * 380 });
   const N = flocks.reduce((t, f) => t + f.members.length, 0);
@@ -588,9 +617,9 @@ function birds(R) {
 export function buildIsland(scene, { textures }) {
   const R = rng(11);
   scene.add(sky());
-  scene.fog = new THREE.Fog(0xf3e3c8, 160, 760);      // (far enough that the ranges keep their shapes, hazing blue-pale with distance)
-  scene.add(new THREE.HemisphereLight(0xfff6e8, 0xb7a9a0, 1.35));
-  const sun = new THREE.DirectionalLight(0xfff1dc, 1.6); sun.position.set(40, 70, 50); scene.add(sun);
+  scene.fog = new THREE.Fog(0xf2c3a2, 180, 820);      // (far enough that the ranges keep their shapes, hazing blue-pale with distance)
+  scene.add(new THREE.HemisphereLight(0xffd9c0, 0x8a6f8a, 1.25));        // (sunset: peach sky, violet shadow)
+  const sun = new THREE.DirectionalLight(0xffc48a, 1.55); sun.position.copy(SUN_DIR).multiplyScalar(100).setY(38); scene.add(sun);   // low, warm, from the west
 
   const world = new THREE.Group(); scene.add(world);
   const isle = new THREE.Group(); world.add(isle);            // everything that floats together

@@ -4,7 +4,9 @@
 // painting (or its card) to see it up close. "All works" lists everything at once.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { styleTick } from './style.js';
+import { styleTick, ink } from './style.js';
+import { framingBranch } from './foliage.js';
+const mulberry = (seed) => () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
 import { buildIsland, MUSEUM_Z, DOOR_Z } from './island.js';
 import { buildGallery } from './gallery.js';
 import { createViewer } from './viewer.js';
@@ -76,6 +78,20 @@ await unwrap.finish();                        // let the last parcel land
 // ── outside ──
 const outside = new THREE.Scene();
 const island = buildIsland(outside, { textures });
+// maple branches framing the view from the top corners (foliage.js), pinned to the camera each frame
+const framing = new THREE.Group(); outside.add(framing);
+const frameL = framingBranch(mulberry(5)), frameR = framingBranch(mulberry(9));
+framing.add(frameL, frameR);
+ink(frameL, 'fine'); ink(frameR, 'fine');
+function pinFraming(t) {
+  framing.position.copy(camera.position); framing.quaternion.copy(camera.quaternion);
+  const D = 3, hh = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * D, hw = hh * camera.aspect;
+  const sway = Math.sin(t * 0.7) * 0.015, tall = camera.aspect < 1;
+  // landscape: scaled to the view's height; portrait (phones): to its width, hung just below the name card
+  const u = tall ? hw * 0.6 : hh, sx = tall ? u : Math.min(hh, hw * 0.75), top = tall ? hh * 0.8 : hh;
+  frameL.position.set(-hw, top, -D); frameL.scale.set(sx, u, u); frameL.rotation.z = sway;
+  frameR.position.set(hw, top * 1.02, -D); frameR.scale.set(-sx * 0.85, u * 0.85, u); frameR.rotation.z = -sway * 1.2;
+}
 const orbit = new OrbitControls(camera, renderer.domElement);
 orbit.target.set(0, 2.2, MUSEUM_Z - 4);
 orbit.enableDamping = true; orbit.dampingFactor = 0.08;
@@ -384,6 +400,7 @@ function frame() {
     visitors?.update(dt);
     if (viewing < 0) renderer.render(inside, camera);
   } else if (viewing < 0) {
+    pinFraming(t);                              // (after the camera's moved this frame, or they trail behind it)
     renderer.render(outside, camera);
   }
   if (viewing >= 0) viewer.render(t, dt);
@@ -395,4 +412,4 @@ mode = 'outside'; setUI();
 requestAnimationFrame(frame);
 $('#load').classList.add('hide');
 setTimeout(() => unwrap.stop(), 700);
-window.__portfolio = { enter, leave, openView, goToWork, get mode() { return mode; }, get gal() { return gal; }, get visitors() { return visitors; }, me, music, camera, orbit };   // (for the smoke test)
+window.__portfolio = { enter, leave, openView, goToWork, get mode() { return mode; }, get gal() { return gal; }, get visitors() { return visitors; }, me, music, camera, orbit, frameL, frameR };   // (for the smoke test)
