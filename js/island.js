@@ -10,6 +10,7 @@ import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { paint, ink, PAL } from './style.js';
 import { buildMuseum } from './museum.js';
+import { realTree, realCypress, realBush, leafLitter, leafShape } from './foliage.js';
 import { ARTIST, WORKS } from './collection.js';
 
 export const MUSEUM_Z = 4;                  // the museum's origin (its forecourt) on the island
@@ -77,6 +78,8 @@ function islandBody({ rim = rimR, depth = 16, lump = 1, seed = 0, flat = inMuseu
     c.setHex(PAL.grass).lerp(new THREE.Color(PAL.grassDeep), n * 0.8).lerp(new THREE.Color(PAL.meadow), Math.max(0, y) * 0.6).lerp(new THREE.Color(0xc9b56a), 0.22 + 0.2 * fbm(x * 0.2 + 3, z * 0.2));   // (fall: going golden)
   });
   const topM = new THREE.Mesh(tg, VC()); topM.name = 'islandTop'; g.add(topM);
+  // the ground's height at (x, z), for laying things on it (null: off the edge)
+  g.userData.heightAt = (x, z) => { const a = Math.atan2(x, z), rr = rim(a), r = Math.hypot(x, z); if (r > rr) return null; const k = Math.pow(r / rr, 1 / 0.9); return topY(x, z, k); };
 
   // the underside: the rim's ring dropped down to a craggy point, bulging, lumpy, banded
   const rows = 26, pos = [], ui = [];
@@ -162,9 +165,7 @@ function leafPile(R, base) {
 // leaves falling from the trees: fluttering down, drifting on the breeze, settling a while on
 // the grass before they're gone; some blow off the island's edge and tumble into the sky
 function fallingLeaves(trees, R) {
-  const N = 260, shape = new THREE.Shape();
-  shape.moveTo(0, -0.09); shape.quadraticCurveTo(0.075, -0.02, 0, 0.09); shape.quadraticCurveTo(-0.075, -0.02, 0, -0.09);
-  const geo = new THREE.ShapeGeometry(shape, 4);
+  const N = 320, geo = leafShape('maple'); geo.scale(0.17, 0.17, 0.17); geo.rotateX(-Math.PI / 2); geo.computeVertexNormals();   // (stood upright: the tumbling turns it)
   const im = new THREE.InstancedMesh(geo, paint(0xffffff, { side: THREE.DoubleSide, hatch: 0, unique: true }), N);
   im.userData.noInk = true; im.frustumCulled = false;
   const L = [], col = new THREE.Color(), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), one = new THREE.Vector3(1, 1, 1), pos = new THREE.Vector3();
@@ -397,8 +398,8 @@ function waterfall(a) {
 function islet(R, r) {
   const rim = (a) => r * (1 + 0.15 * Math.sin(3 * a + R() * 6) + 0.08 * Math.sin(5 * a));
   const g = islandBody({ rim, depth: r * 2.2, lump: 0.8, seed: R() * 50, flat: () => false, rings: 6, segs: 40 });
-  if (r > 1.6 && R() < 0.8) { const t = tree(R, R() < 0.3 ? 'cypress' : 'round'); t.scale.setScalar(0.7); g.add(t); }
-  else if (r > 1.0) { const b = bush(R); g.add(b); }
+  if (r > 1.6 && R() < 0.8) { const t = R() < 0.3 ? realCypress(R) : realTree(R, { leaves: 0.45 }); t.scale.setScalar(0.6); g.add(t); }
+  else if (r > 1.0) { const b = realBush(R); b.scale.setScalar(0.8); g.add(b); }
   return g;
 }
 
@@ -468,30 +469,33 @@ export function buildIsland(scene, { textures }) {
     };
     // cypresses flanking the walk, like a formal garden
     for (const z of [MUSEUM_Z + 5.2, MUSEUM_Z + 7.6, MUSEUM_Z + 10]) for (const s of [-1, 1]) {
-      const t = tree(R, 'cypress'); t.position.set(s * 2.0, 0, z); isle.add(t); spots.push([s * 2.0, z, 0.6]);
+      const t = realCypress(R); t.position.set(s * 2.0, 0, z); isle.add(t); spots.push([s * 2.0, z, 0.6]);
     }
-    for (let i = 0; i < 16; i++) place(tree(R), 1.3);
-    for (let i = 0; i < 22; i++) place(bush(R), 0.7, 40, [6, 15]);
-    // flowers scattered in the grass
-    const fl = [], cols = [0xd9773a, 0xc8503a, 0xe3ad45, 0xb8642e, PAL.accent];   // (fall: fallen leaves dotted in the grass)
-    const flowerMats = cols.map(c => paint(c, { hatch: 0 }));
-    const byCol = cols.map(() => []);
-    for (let i = 0; i < 420; i++) {
-      const a = R() * Math.PI * 2, d = 5 + R() * 10, x = Math.sin(a) * d, z = Math.cos(a) * d;
-      if (inMuseum(x, z, 0.3) || onWalk(x, z, 0.2) || d > rimR(a) - 1.0) continue;
-      const f = new THREE.CircleGeometry(0.09, 5); f.rotateX(-Math.PI / 2); f.rotateY(R() * 6.28); f.scale(1, 1, 0.55); f.translate(x, 0.04 + R() * 0.03, z); f.deleteAttribute('uv'); byCol[i % cols.length].push(f);
-    }
-    byCol.forEach((list, i) => { if (list.length) { const m = new THREE.Mesh(mergeGeometries(list), flowerMats[i]); m.userData.noInk = true; isle.add(m); } });
-    void fl;
+    for (let i = 0; i < 16; i++) place(realTree(R), 1.5);
+    for (let i = 0; i < 22; i++) place(realBush(R), 0.7, 40, [6, 15]);
     // pumpkins along the walk and by the forecourt, a few out in the grass
     for (const [x, z, sc] of [[-1.55, MUSEUM_Z + 4.0, 1], [1.6, MUSEUM_Z + 4.3, 0.8], [-1.3, MUSEUM_Z + 4.55, 0.6], [2.7, MUSEUM_Z + 3.2, 0.9], [-2.9, MUSEUM_Z + 3.0, 1.1], [1.35, MUSEUM_Z + 8.8, 0.7], [-1.4, MUSEUM_Z + 11.2, 0.9]]) {
       const p = pumpkin(R); p.scale.setScalar(sc); p.position.set(x, 0, z); p.rotation.y = R() * 6; isle.add(p);
     }
     for (let i = 0; i < 4; i++) { const p = pumpkin(R); p.scale.setScalar(0.6 + R() * 0.5); place(p, 0.35, 40, [6, 14]); }
-    // leaf piles under some of the trees, in the colours of the tree above
-    for (const t of isle.children.filter(o => o.userData.leafCol).slice(0, 9)) {
-      const pile = leafPile(R, t.userData.leafCol);
-      pile.position.set(t.position.x + (R() - 0.5) * 1.2, 0, t.position.z + (R() - 0.5) * 1.2); isle.add(pile);
+    // the leaf litter: drifts of fallen leaves over all the grass, thick under the trees, banked
+    // along the walk, heaped in piles here and there; a few blown onto the path stones
+    {
+      const trees = isle.children.filter(o => o.userData.leafCol);
+      const piles = trees.slice(0, 8).map(t => [t.position.x + (R() - 0.5) * 1.4, t.position.z + (R() - 0.5) * 1.4, 0.7 + R() * 0.4]);
+      const density = (x, z) => {
+        if (inMuseum(x, z, -0.2)) return 0;
+        let d = 0.3 + 0.7 * Math.max(0, fbm(x * 0.35 + 9, z * 0.35) - 0.3) * 2;               // drifts
+        for (const t of trees) { const r = Math.hypot(t.position.x - x, t.position.z - z), cr = t.userData.crownR || 1.5; if (r < cr * 1.3) d += 0.7 * (1 - r / (cr * 1.3)); }
+        for (const [px, pz, pr] of piles) { const r = Math.hypot(px - x, pz - z); if (r < pr) d += 2.5 * (1 - r / pr); }
+        if (Math.abs(x) > 1.0 && Math.abs(x) < 1.7 && z > MUSEUM_Z + 3.4) d += 0.5;           // banked along the walk
+        if (onWalk(x, z)) d *= 0.25;
+        return Math.min(1, d);
+      };
+      const heightAt = (x, z) => { const y = body.userData.heightAt(x, z); if (y == null) return null; const a = Math.atan2(x, z); return Math.hypot(x, z) > rimR(a) - 0.6 ? null : y; };
+      // the piles get extra leaves laid on a dome, so they rise into heaps
+      const heapAt = (x, z) => { let h = 0; for (const [px, pz, pr] of piles) { const r = Math.hypot(px - x, pz - z); if (r < pr) h = Math.max(h, 0.28 * pr * Math.sqrt(1 - (r / pr) ** 2)); } return h; };
+      isle.add(leafLitter(R, { count: 18000, density, heightAt: (x, z) => { const y = heightAt(x, z); return y == null ? null : y + heapAt(x, z) * (0.6 + 0.4 * R()); }, area: { x0: -17, x1: 17, z0: -17, z1: 17 } }));
     }
   }
 

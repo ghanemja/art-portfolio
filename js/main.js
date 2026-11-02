@@ -395,4 +395,4 @@ mode = 'outside'; setUI();
 requestAnimationFrame(frame);
 $('#load').classList.add('hide');
 setTimeout(() => unwrap.stop(), 700);
-window.__portfolio = { enter, leave, openView, goToWork, get mode() { return mode; }, get gal() { return gal; }, get visitors() { return visitors; }, me, music };   // (for the smoke test)
+window.__portfolio = { enter, leave, openView, goToWork, get mode() { return mode; }, get gal() { return gal; }, get visitors() { return visitors; }, me, music, camera, orbit };   // (for the smoke test)
