@@ -163,8 +163,8 @@ async function enter() {
     gal = buildGallery(inside, { textures });
     // the doorway: the island itself, seen from the door (rendered once into a picture)
     {
-      const rt = new THREE.WebGLRenderTarget(512, 768, { samples: 4 });
-      const cam = new THREE.PerspectiveCamera(62, 512 / 768, 0.5, 1400);
+      const rt = new THREE.WebGLRenderTarget(512, 733, { samples: 4 });   // (the doorway picture's shape: 2.2 × 3.15)
+      const cam = new THREE.PerspectiveCamera(62, 512 / 733, 0.5, 1400);
       cam.position.set(0, island.isle.position.y + 1.75, DOOR_Z + 0.6); cam.lookAt(0, island.isle.position.y + 1.2, DOOR_Z + 12);
       framing.visible = false;
       renderer.setRenderTarget(rt); renderer.render(outside, cam); renderer.setRenderTarget(null);

@@ -30,3 +30,4 @@
 - ✅ Sunset: streaky pink/orange sky, low sun, warm light, rosy haze; mountains carved with vertical erosion streaks and snow down the gullies (no horizontal bands)
 - ✅ Red maple branches framing the view from the top corners (phones too)
 - ✅ The doorway shows the real island (rendered from the door); corner plants are real potted trees in glazed urns; the brochure is aged parchment
+- ✅ Removed the GitHub link from the name card; the doorway picture fills the door frame (no white border)

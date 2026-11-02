@@ -13,7 +13,7 @@ export const ARTIST = {
   museum: 'THE GHANEM GALLERY OF ART',   // carved over the portico
   short: 'THE GHANEM GALLERY',           // on the banners
   tagline: 'paintings, hung in a museum that floats',
-  links: [['GitHub', 'https://github.com/ghanemja']],
+  links: [],                             // [['label', 'https://…'], …] shown on the name card
 };
 
 // the guided tour's stops, in order (by file name)

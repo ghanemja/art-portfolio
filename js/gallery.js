@@ -254,7 +254,9 @@ export function buildGallery(scene, { textures }) {
       c.fillStyle = '#e6d6b8'; c.beginPath(); c.moveTo(w * 0.42, h * 0.63); c.lineTo(w * 0.58, h * 0.63); c.lineTo(w * 0.9, h); c.lineTo(w * 0.1, h); c.fill();
       c.fillStyle = '#6d9358'; for (const x of [0.15, 0.85]) { c.beginPath(); c.ellipse(w * x, h * 0.5, 8, 30, 0, 0, 7); c.fill(); }
     });
-    const doorway = flat(DW, DH, new THREE.MeshBasicMaterial({ map: out, toneMapped: false }), 0, DH / 2, 0.25, [0, Math.PI, 0]);
+    // (flush behind the jambs and a little bigger than the opening, so the frame overlaps its edges: set back
+    // 0.25 outside the wall it left a gap round it where the bare background showed, a white border)
+    const doorway = flat(DW + 0.2, DH + 0.15, new THREE.MeshBasicMaterial({ map: out, toneMapped: false }), 0, (DH + 0.15) / 2, 0.035, [0, Math.PI, 0]);
     doorway.name = 'exit';
     // the welcome sign over the door, inside
     flat(1.9, 0.42, paint(0xffffff, { map: canvasTex(640, 140, (c, w, h) => {
