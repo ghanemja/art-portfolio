@@ -2,7 +2,8 @@
 import { createRequire } from 'module'; const require = createRequire(import.meta.url);
 const { chromium } = require('playwright'); import fs from 'fs';
 const PREVIEW = !!process.env.PREVIEW, DT = 1000 / 30;
-const UN = +(process.env.UN || 165), HN = +(process.env.HN || 105), WARM = +(process.env.WARM || 90), EVERY = +(process.env.EVERY || 30);
+const SH = fs.existsSync(process.env.SHOTS || 'shots.json') ? JSON.parse(fs.readFileSync(process.env.SHOTS || 'shots.json', 'utf8')) : {};
+const UN = +(process.env.UN || SH.U || 165), HN = +(process.env.HN || SH.H || 105), WARM = +(process.env.WARM || 90), EVERY = +(process.env.EVERY || 30);
 fs.mkdirSync('loadframes', { recursive: true });
 const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 // (the unwrapping is filmed 300px short: captions.py pads the top with paper, so the card sits above the hung paintings)

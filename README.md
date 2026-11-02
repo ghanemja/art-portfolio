@@ -55,6 +55,7 @@ Settings → Pages → *Deploy from a branch* → pick the branch and `/ (root)`
 the models and the code. You may not copy, reuse, sell, or use any of it for AI training without
 written permission. See [LICENSE](LICENSE). The fonts (Caveat, Patrick Hand) are under the SIL
 Open Font License.
-- `scripts/reel/`: the Instagram Reel ("6 things I learned"). `make-reel.sh` films the site frame by frame on a virtual
-  clock (the island, the loading screens, the hall and the paintings), adds the lesson cards and the recorded soundtrack, and encodes a 1080×1920 video.
-  `voiceover-script.md` is the timed script to record over it.
+- `scripts/reel/`: the Instagram Reel ("6 things I learned"). `make-reel.sh voiceover.m4a` transcribes your voiceover, times every
+  shot and lesson card to it, films the site frame by frame on a virtual clock (the island, the loading screens, the hall and
+  the paintings), cleans up the voice, and mixes it over birdsong and the waterfall with sound effects (card pops, paper
+  crinkles, hammer taps, swishes). `voiceover-script.md` is a script to record.

@@ -32,3 +32,4 @@
 - ✅ The doorway shows the real island (rendered from the door); corner plants are real potted trees in glazed urns; the brochure is aged parchment
 - ✅ Removed the GitHub link from the name card; the doorway picture fills the door frame (no white border)
 - ✅ Instagram Reel: 6 lessons learned over shots of the island, the loading screens, the hall and the paintings (scripts/reel/), with a timed voiceover script
+- ✅ Reel timed to a recorded voiceover: cleaned-up voice, sound effects, birdsong and the waterfall shot, re-timed shots and cards

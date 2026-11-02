@@ -1,30 +1,36 @@
 #!/usr/bin/env bash
-# Makes the Instagram Reel (1080x1920, 30 fps, with the site's nature soundtrack) from the live site.
-# Needs: Playwright + Chromium, ffmpeg, and Python with Pillow, fonttools and brotli.
-# Run it from anywhere; it works in ./work next to this script. It takes about 30 minutes (software WebGL).
+# Makes the Instagram Reel from the live site, timed to a voiceover recording.
+#   ./make-reel.sh path/to/voiceover.m4a
+# Steps: transcribe the voice (word timings) -> cut long pauses -> time each shot and card to it ->
+# film the shots and the loading screens -> clean up the voice -> mix it over birdsong/waterfall + sound effects.
+# Needs: Playwright + Chromium, ffmpeg, Python with Pillow, numpy, scipy, fonttools, brotli and faster-whisper.
+# FAST=1 films the 3D shots at 720x1280 (about twice as fast; upscaled to 1080x1920).
 set -euo pipefail
+VO_IN=$(realpath "$1")
 cd "$(dirname "$0")"; HERE=$PWD; ROOT=$(cd ../.. && pwd)
-mkdir -p work && cd work
-cp "$HERE"/{vclock.js,record.mjs,loading.mjs,audio.mjs,captions.py} .
+mkdir -p work/vo && cd work
+cp "$HERE"/{vclock.js,record.mjs,loading.mjs,audio.mjs,captions.py,sfx.py,bed.py,voedit.py,words.py,finish.sh} .
 python3 - "$ROOT" <<'PY'
 import sys; from fontTools.ttLib import TTFont
 for n in ['caveat-latin-700-normal', 'patrick-hand-latin-400-normal']:
   f = TTFont(f'{sys.argv[1]}/fonts/{n}.woff2'); f.flavor = None; f.save(f'{n}.ttf')
 PY
-(cd "$ROOT" && exec python3 -m http.server 8123 >/dev/null 2>&1) & SRV=$!; trap 'kill $SRV' EXIT; sleep 1
-rm -rf frames loadframes seq out
-node record.mjs      # the 3D shots -> frames/
-node loading.mjs     # the loading screens -> loadframes/
-ROOT="$ROOT/" node audio.mjs       # the site's soundtrack, recorded in real time -> nature.webm
-# the cut: hook + lesson 1, then the loading screens (lesson 2), then the rest
+[ -f vo/sh.rnnn ] || curl -sSL -o vo/sh.rnnn https://raw.githubusercontent.com/richardpl/arnndn-models/master/sh.rnnn
+ffmpeg -y -v error -i "$VO_IN" vo/take.wav
+python3 words.py vo/take.wav                      # -> words.json
+VO=vo/take.wav python3 voedit.py                  # -> vo/voice_edit.wav, timeline.json
 python3 - <<'PY'
-import os
-os.makedirs('seq'); n = 0
-for d, p, a, b in [('frames', 'f', 0, 270), ('loadframes', 'u', 0, 165), ('loadframes', 'h', 0, 105), ('frames', 'f', 270, 1038)]:
-  for i in range(a, b): os.symlink(os.path.abspath(f'{d}/{p}{i:05d}.jpg'), f'seq/f{n:05d}.jpg'); n += 1
+import json
+T = json.load(open('timeline.json')); F = lambda k: round(T[k] * 30); end = round((T['voice_end'] + 1.2) * 30)
+n = {'A': F('l1'), 'B': F('l2') - F('l1'), 'U': F('crew') - F('l2'), 'H': F('l3') - F('crew'), 'C': F('l4') - F('l3'),
+     'D': F('l5') - F('l4'), 'E': F('l6') - F('l5'), 'F': F('outro') - F('l6'), 'G': end - F('outro')}
+json.dump(n, open('shots.json', 'w')); print('shots', n)
 PY
-python3 captions.py seq out
-ffmpeg -y -loglevel error -framerate 30 -i out/f%05d.jpg -i nature.webm \
-  -filter_complex "[1:a]atrim=0:43.6,asetpts=PTS-STARTPTS,loudnorm=I=-18:TP=-1.5:LRA=11,afade=t=in:d=0.6,afade=t=out:st=41.6:d=2,aresample=48000[a]" \
-  -map 0:v -map "[a]" -shortest -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -profile:v high -movflags +faststart -c:a aac -b:a 192k reel.mp4
+ffmpeg -y -v error -i vo/voice_edit.wav -af "$(sed 's#sh.rnnn#vo/sh.rnnn#' "$HERE/voice-chain.txt")" -ar 48000 vo/voice_final.wav
+(cd "$ROOT" && exec python3 -m http.server 8123 >/dev/null 2>&1) & SRV=$!; trap 'kill $SRV' EXIT; sleep 1
+rm -rf frames loadframes
+node record.mjs & node loading.mjs & wait          # the 3D shots and the loading screens, side by side
+ROOT="$ROOT/" LEN=62 OUT=nature_nowind.webm node audio.mjs             # waterfall + birds
+ROOT="$ROOT/" LEN=62 OUT=nature_birds.webm NO_FALL=1 node audio.mjs    # birds only
+./finish.sh                                        # cards, sound effects, nature bed, mix -> reel.mp4
 echo "made $PWD/reel.mp4"

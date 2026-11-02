@@ -7,15 +7,20 @@ W, H = 1080, 1920
 CAV = 'caveat-latin-700-normal.ttf'; PH = 'patrick-hand-latin-400-normal.ttf'
 INK, PAPER, RED = (43, 33, 30), (247, 238, 218), (178, 52, 38)
 # (start frame, end frame, label, headline, sub)
+# when each card shows: from timeline.json (the voiceover's section starts, in seconds), as frames
+import json
+T = json.load(open(os.environ.get('TIMELINE', 'timeline.json'))); fr = lambda k: round(T[k] * 30)
+END = round((T['voice_end'] + 1.2) * 30)
 CARDS = [
-  (0,    120,  '6 things I learned', 'I turned my paintings into\na museum that floats', ''),
-  (120,  270,  'LESSON 1', 'Build a world, not a webpage.', ''),
-  (270,  540,  'LESSON 2', 'Make the wait part of the show.', ''),
-  (540,  690,  'LESSON 3', 'Details make it feel alive.', ''),
-  (690,  855,  'LESSON 4', 'Presentation is part of the art.', ''),
-  (855,  1023, 'LESSON 5', 'Done beats perfect. Then fix it.', ''),
-  (1023, 1158, 'LESSON 6', 'Make room for people.', ''),
-  (1158, 1308, 'JanGogh Art', 'Come walk through it · link in bio', ''),
+  (0,           fr('l1'),    '6 things I learned', 'I turned my artwork into\na floating 3D museum', ''),
+  (fr('l1'),    fr('l2'),    'LESSON 1', "Start before you're ready.", ''),
+  (fr('l2'),    fr('l3'),    'LESSON 2', 'Make the wait part of the show.', ''),
+  (fr('l3'),    fr('l4'),    'LESSON 3', 'Details make it feel alive.', ''),
+  (fr('l4'),    fr('l5'),    'LESSON 4', 'Presentation is part of the art.', ''),
+  (fr('l5'),    fr('l6'),    'LESSON 5', '80% done beats perfect.', ''),
+  (fr('l6'),    fr('outro'), 'LESSON 6', 'Make room for people.', ''),
+  (fr('outro'), fr('bio'),   'remember', 'AI is just the executor.\nYou bring the taste & the vision.', ''),
+  (fr('bio'),   END,         'JanGogh Art', 'Come walk through it · link in bio', ''),
 ]
 def font(p, s): return ImageFont.truetype(p, s)
 def card(label, head, sub):
