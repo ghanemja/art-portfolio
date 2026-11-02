@@ -9,7 +9,7 @@ INK, PAPER, RED = (43, 33, 30), (247, 238, 218), (178, 52, 38)
 # (start frame, end frame, label, headline, sub)
 CARDS = [
   (0,    120,  '6 things I learned', 'I turned my paintings into\na museum that floats', ''),
-  (120,  270,  'LESSON 1', "Start before you're ready.", ''),
+  (120,  270,  'LESSON 1', 'Build a world, not a webpage.', ''),
   (270,  540,  'LESSON 2', 'Make the wait part of the show.', ''),
   (540,  690,  'LESSON 3', 'Details make it feel alive.', ''),
   (690,  855,  'LESSON 4', 'Presentation is part of the art.', ''),

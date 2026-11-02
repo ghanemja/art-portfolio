@@ -25,6 +25,6 @@ for d, p, a, b in [('frames', 'f', 0, 270), ('loadframes', 'u', 0, 165), ('loadf
 PY
 python3 captions.py seq out
 ffmpeg -y -loglevel error -framerate 30 -i out/f%05d.jpg -i nature.webm \
-  -filter_complex "[1:a]atrim=0:43.6,asetpts=PTS-STARTPTS,loudnorm=I=-16:TP=-1.5:LRA=11,afade=t=in:d=0.6,afade=t=out:st=41.6:d=2,aresample=48000[a]" \
+  -filter_complex "[1:a]atrim=0:43.6,asetpts=PTS-STARTPTS,loudnorm=I=-18:TP=-1.5:LRA=11,afade=t=in:d=0.6,afade=t=out:st=41.6:d=2,aresample=48000[a]" \
   -map 0:v -map "[a]" -shortest -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -profile:v high -movflags +faststart -c:a aac -b:a 192k reel.mp4
 echo "made $PWD/reel.mp4"

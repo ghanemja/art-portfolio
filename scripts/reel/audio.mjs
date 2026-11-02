@@ -1,14 +1,15 @@
-// Records the site's own soundtrack (js/music.js) in real time: outside, then inside for the hall shots, then outside.
+// Records the site's nature sounds (js/music.js: waterfall, wind, birds; no instruments) in real time.
 import { createRequire } from 'module'; const require = createRequire(import.meta.url);
 const { chromium } = require('playwright'); import fs from 'fs';
-const LEN = +(process.env.LEN || 46), IN_AT = +(process.env.IN_AT || 23), OUT_AT = +(process.env.OUT_AT || 38.5);
+// (IN_AT/OUT_AT would switch to the hall mix, where the nature sounds are faint through the walls: off by default)
+const LEN = +(process.env.LEN || 46), IN_AT = +(process.env.IN_AT || 999), OUT_AT = +(process.env.OUT_AT || 999);
 const b = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
 const p = await b.newPage();
 p.on('pageerror', e => console.log('ERR', String(e)));
-// no glassy chimes in the Reel (they ring on): serve music.js with the chime call taken out
+// only nature in the Reel (waterfall, wind, birds): serve music.js with the instruments silenced
 const ROOT = process.env.ROOT || new URL('../../', import.meta.url).pathname;
 await p.route('http://localhost:8123/js/music.js', r => r.fulfill({ contentType: 'application/javascript',
-  body: fs.readFileSync(ROOT + '/js/music.js', 'utf8').replace(/\bchime\(C\.mel/, 'void (C.mel') }));
+  body: fs.readFileSync(ROOT + '/js/music.js', 'utf8').replace(/\bfunction (pad|bass|kalimba|chime)\(/g, 'function $1() {}\nfunction _$1(') }));
 await p.route('http://localhost:8123/__rec.html', r => r.fulfill({ contentType: 'text/html', body: `<!doctype html><script type="module">
   const conn = AudioNode.prototype.connect;
   AudioNode.prototype.connect = function (to, ...a) {
