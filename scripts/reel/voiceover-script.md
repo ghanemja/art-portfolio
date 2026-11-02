@@ -1,6 +1,6 @@
 # Reel voiceover: "6 things I learned turning my paintings into a floating museum"
 
-Length: 43.6 s · 9:16 (1080×1920) · 30 fps. The captions are burned in, so it works on mute too.
+Length: 43.6 s · 9:16 (1080×1920) · 30 fps. The soundtrack is the site's own nature music (kalimba and pad over wind, waterfall and birdsong); it goes quieter and echoier in the hall shots, just like walking inside. The lesson cards are short headlines, so your voice carries the details.
 Read it relaxed but upbeat. Each line fits inside its shot with a breath to spare.
 The timestamps are when each caption card pops up; start each line just after it.
 
@@ -20,13 +20,13 @@ The timestamps are when each caption card pops up; start each line just after it
 > I turned my paintings into a museum that floats 🍂🖼️ Here are 6 things I learned along the way. You can unwrap every painting and walk through every room: link in bio.
 > #acrylicpainting #artistsoninstagram #paintingoftheday #artportfolio #JanGoghArt
 
-## Adding your audio
+## Adding your voice
 
 Record the voiceover (a phone voice memo is fine), then do one of these:
 
-- **In Instagram or CapCut:** upload `reel.mp4`, add your recording as a voiceover track, and line it up with the cards. You can add a trending sound underneath at low volume.
-- **With ffmpeg:**
+- **In Instagram or CapCut:** upload `reel.mp4`, add your recording as a voiceover, and turn the original sound down to about 25–30% so your voice sits on top.
+- **With ffmpeg:** this lowers the nature track to 30% and mixes your voice over it.
 
 ```bash
-ffmpeg -i reel.mp4 -i voiceover.m4a -map 0:v -map 1:a -c:v copy -c:a aac -b:a 192k -shortest reel-with-voice.mp4
+ffmpeg -i reel.mp4 -i voiceover.m4a -filter_complex "[0:a]volume=0.3[bg];[bg][1:a]amix=inputs=2:duration=first:normalize=0[a]" -map 0:v -map "[a]" -c:v copy -c:a aac -b:a 192k reel-with-voice.mp4
 ```
