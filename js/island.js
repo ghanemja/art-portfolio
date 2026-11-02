@@ -8,7 +8,7 @@
 // Frame: +Y up. The museum's doorway is at (0, 0.66, DOOR_Z) facing +Z.
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { paint, ink, PAL } from './style.js';
+import { paint, ink, PAL, inkUniforms } from './style.js';
 import { buildMuseum } from './museum.js';
 import { realTree, realCypress, realBush, leafLitter, leafShape } from './foliage.js';
 import { ARTIST, WORKS } from './collection.js';
@@ -313,7 +313,7 @@ function landscape(R) {
     ];
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), v = new THREE.Vector3(), col = new THREE.Color();
     const ray = new THREE.Raycaster(), down = new THREE.Vector3(0, -1, 0);
-    land.updateMatrixWorld(true);
+    land.updateMatrixWorld(true);                   // (g has no parent yet: this is the land's local frame)
     const clumps = [];
     for (let c = 0; c < 90; c++) {
       const cx = (R() - 0.5) * 620, cz = (R() - 0.5) * 620;
@@ -328,11 +328,14 @@ function landscape(R) {
         if ((K.geo === spruce) !== (R() < (sp ? 0.8 : 0.15))) continue;
         const a = R() * 6.28, rr = cr * Math.sqrt(R()), x = cx + Math.cos(a) * rr, z = cz + Math.sin(a) * rr;
         if (Math.abs(z - river(x)) < 12) continue;
-        ray.set(v.set(x, 260 + GROUND_Y, z), down);
+        // (the land isn't in the scene yet, so its matrices are its own: the ray works in the
+        // landscape's local space, and the hit's y is the ground there, no GROUND_Y to take off.
+        // Taking it off again stood every tree 70 up in the air)
+        ray.set(v.set(x, 260, z), down);
         const hit = ray.intersectObject(land)[0]; if (!hit) continue;
         const s = 0.75 + R() * 0.6;
         q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), R() * 6.28);
-        m4.compose(v.set(x, hit.point.y - GROUND_Y - 0.3, z), q, sc.set(s, s * (0.85 + R() * 0.35), s));
+        m4.compose(v.set(x, hit.point.y - 0.4, z), q, sc.set(s, s * (0.85 + R() * 0.35), s));
         col.setHex(K.cols[Math.floor(R() * K.cols.length)]).offsetHSL(0, (R() - 0.5) * 0.1, (R() - 0.5) * 0.08);
         im.setColorAt(k, col); im.setMatrixAt(k++, m4);
       }
@@ -446,6 +449,81 @@ function islet(R, r) {
   if (r > 1.6 && R() < 0.8) { const t = R() < 0.3 ? realCypress(R) : realTree(R, { leaves: 0.45 }); t.scale.setScalar(0.6); g.add(t); }
   else if (r > 1.0) { const b = realBush(R); b.scale.setScalar(0.8); g.add(b); }
   return g;
+}
+
+// ── BIRDS: geese in V formation looping wide round the island, swallows darting close in, a
+// pair circling high over the mountains. Dark silhouettes; the wings flap in a vertex shader
+// (each bird its own beat, the geese gliding between bursts), every bird one instance of one mesh ──
+function birds(R) {
+  // a bird, nose to +z: a slim body, and each wing an inner panel and a swept-back tip
+  const P = [], W = [], I = [];
+  const v = (x, y, z, w) => { P.push(x, y, z); W.push(w); return P.length / 3 - 1; };
+  const nose = v(0, 0, 0.45, 0), tail = v(0, 0.02, -0.4, 0), belly = v(0, -0.05, 0.05, 0), back = v(0, 0.05, 0.0, 0);
+  I.push(nose, back, tail, nose, tail, belly);
+  for (const s of [-1, 1]) {
+    const root0 = v(s * 0.05, 0.02, 0.15, 0), root1 = v(s * 0.05, 0.02, -0.12, 0);
+    const elbow0 = v(s * 0.45, 0.03, 0.1, 0.5), elbow1 = v(s * 0.45, 0.03, -0.12, 0.5);
+    const tip = v(s * 0.95, 0.0, -0.25, 1);
+    I.push(root0, elbow0, root1, root1, elbow0, elbow1, elbow0, tip, elbow1);
+  }
+  const geo = new THREE.InstancedBufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  geo.setAttribute('aWing', new THREE.Float32BufferAttribute(W, 1));
+  geo.setIndex(I);
+  const flocks = [];
+  // three skeins of geese: a V of 5–9 behind a leader
+  for (let f = 0; f < 3; f++) {
+    const n = 5 + Math.floor(R() * 5), members = [];
+    for (let k = 0; k < n; k++) { const side = k === 0 ? 0 : (k % 2 ? 1 : -1), rank = Math.ceil(k / 2); members.push([side * rank * 2.2, (R() - 0.5) * 0.4, -rank * 2.0]); }
+    flocks.push({ kind: 'goose', members, r: 42 + f * 30 + R() * 15, y: 10 + f * 9 + R() * 6, a: R() * 6.28, sp: (0.05 + R() * 0.025) * (f % 2 ? -1 : 1), wob: R() * 6, scale: 2.4 });
+  }
+  // swallows round the island: each its own wandering loop
+  for (let k = 0; k < 12; k++) flocks.push({ kind: 'swallow', members: [[0, 0, 0]], r: 18 + R() * 16, y: 2 + R() * 8, a: R() * 6.28, sp: (0.25 + R() * 0.25) * (R() < 0.5 ? -1 : 1), wob: R() * 6, scale: 0.85 });
+  // a pair of hawks circling high over the far mountains
+  for (let k = 0; k < 2; k++) flocks.push({ kind: 'hawk', members: [[0, 0, 0]], r: 25 + R() * 15, y: 70 + R() * 30, a: R() * 6.28, sp: 0.06 + R() * 0.03, wob: R() * 6, scale: 3.2, cx: Math.sin(k * 2.6 + 0.8) * 380, cz: Math.cos(k * 2.6 + 0.8) * 380 });
+  const N = flocks.reduce((t, f) => t + f.members.length, 0);
+  const phase = new Float32Array(N), rate = new Float32Array(N), glide = new Float32Array(N);
+  let k = 0;
+  for (const f of flocks) for (let m = 0; m < f.members.length; m++, k++) {
+    phase[k] = R() * 6.28; rate[k] = f.kind === 'swallow' ? 13 + R() * 4 : f.kind === 'goose' ? 5.5 + R() * 0.8 : 3; glide[k] = f.kind === 'swallow' ? 0.15 : f.kind === 'goose' ? 0.4 : 0.85;
+  }
+  geo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(phase, 1));
+  geo.setAttribute('aRate', new THREE.InstancedBufferAttribute(rate, 1));
+  geo.setAttribute('aGlide', new THREE.InstancedBufferAttribute(glide, 1));
+  const mat = new THREE.MeshBasicMaterial({ color: 0x3a3040, side: THREE.DoubleSide });
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.uTime = inkUniforms.uTime;
+    sh.vertexShader = 'uniform float uTime;\nattribute float aWing, aPhase, aRate, aGlide;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      // flap: the wing bends at the elbow, the tip lagging; now and then it holds still and glides
+      float on = smoothstep(aGlide - 0.15, aGlide + 0.15, 0.5 + 0.5 * sin(uTime * 0.6 + aPhase * 1.7));
+      float beat = sin(uTime * aRate + aPhase);
+      float flap = mix(0.12, beat, on);
+      transformed.y += aWing * 0.55 * flap + aWing * aWing * 0.35 * mix(0.1, sin(uTime * aRate + aPhase - 0.7), on);`);
+  };
+  mat.customProgramCacheKey = () => 'birds';
+  const mesh = new THREE.InstancedMesh(geo, mat, N);
+  mesh.userData.noInk = true; mesh.frustumCulled = false;
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(0, 0, 0, 'YXZ'), sc = new THREE.Vector3(), c = new THREE.Vector3(), off = new THREE.Vector3();
+  const tick = (t) => {
+    let i = 0;
+    for (const f of flocks) {
+      const a = f.a + t * f.sp;
+      const cx = f.cx ?? 0, cz = f.cz ?? 0;
+      // a loop that breathes in and out, rising and dipping
+      const r = f.r * (1 + 0.15 * Math.sin(t * 0.13 + f.wob));
+      c.set(cx + Math.sin(a) * r, f.y + Math.sin(t * 0.4 + f.wob) * (f.kind === 'swallow' ? 2.5 : 3), cz + Math.cos(a) * r);
+      const heading = a + (f.sp > 0 ? Math.PI / 2 : -Math.PI / 2);
+      const bank = (f.sp > 0 ? -1 : 1) * (f.kind === 'swallow' ? 0.5 : 0.18);
+      e.set(Math.sin(t * 0.7 + f.wob) * 0.08, heading, bank); q.setFromEuler(e);
+      for (const [mx, my, mz] of f.members) {
+        off.set(mx, my + Math.sin(t * 1.3 + mx) * 0.2, mz).applyQuaternion(q);
+        m4.compose(off.add(c), q, sc.setScalar(f.scale)); mesh.setMatrixAt(i++, m4);
+      }
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  };
+  tick(0);
+  return { mesh, tick };
 }
 
 export function buildIsland(scene, { textures }) {
@@ -579,6 +657,7 @@ export function buildIsland(scene, { textures }) {
   }
 
   world.add(landscape(R));
+  const flight = birds(R); world.add(flight.mesh);              // geese, swallows, hawks
 
   // a click target over the open door (museum-local: the doorway at FRONT, 1.3 wide, 2 high)
   const door = new THREE.Mesh(new THREE.BoxGeometry(1.4, 2.1, 0.9), new THREE.MeshBasicMaterial({ visible: false }));
@@ -593,6 +672,7 @@ export function buildIsland(scene, { textures }) {
     fall.mat.uniforms.uT.value = t;
     const dt = Math.min(0.05, t - (tick.last ?? t)); tick.last = t;
     leaves.tick(t, dt);
+    flight.tick(t);
     const gust = leaves.gust();
     for (const w of swayers) { w.c.rotation.z = -w.s * (0.5 + gust * 0.8) * (0.6 + 0.4 * Math.sin(t * 1.1 + w.ph)); w.c.rotation.x = Math.sin(t * 0.8 + w.ph * 1.3) * w.s * 0.4; }
     mus.tick(t, 1);

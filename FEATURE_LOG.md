@@ -24,3 +24,5 @@
 - ✅ Sconces on partitions and pilasters; picture lights cast a warm wash on each painting
 - ✅ Realistic trees (branching trunks, crowns of thousands of fluttering leaves), leafy shrubs and cypresses; the grass carpeted with real-looking fallen leaves (oak, maple, elm) in drifts and heaps
 - ✅ Background woods are 3D trees (round autumn broadleaves, tiered spruces) in clumps; mountains are one ridged terrain range (meadow, autumn forest, rock, snow by height and slope)
+- ✅ Fixed the background woods floating in the air (they stood 70 up); they sit on the ground
+- ✅ Birds: geese in V formation looping round the island, swallows darting close, hawks circling over the mountains
