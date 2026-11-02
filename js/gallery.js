@@ -12,6 +12,7 @@
 // Frame: the doorway is at the origin in the front wall, the hall runs to −z. +Y up.
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { paint, ink, mergeStatic, PAL } from './style.js';
 import { frameKit } from './museum.js';
 import { ARTIST, WORKS } from './collection.js';
@@ -53,11 +54,52 @@ export function frameSize(a, A = 0.95) {
   return { ow, oh, iw, ih };
 }
 
+
+// ── MOULDINGS: a profile swept straight along a run, the way a joiner's moulding plane cuts it ──
+// prof: [[out, up], …] from the wall at the bottom round to the wall at the top; a point given
+// twice creases there, everywhere else the shading runs smooth across the curves. Swept along
+// local x (len, centred), out is local +z. The open ends get the profile as a cap.
+const arc = (cz, cy, r, a0, a1, n = 6) => Array.from({ length: n + 1 }, (_, k) => { const a = a0 + (a1 - a0) * k / n; return [cz + Math.cos(a) * r, cy + Math.sin(a) * r]; });
+function sweep(prof, len, mat, off = 0) {
+  const pos = [], idx = [];
+  for (const [z, y] of prof) pos.push(-len / 2, y, z + off, len / 2, y, z + off);
+  for (let j = 0; j < prof.length - 1; j++) { const a = j * 2, b = a + 1, c = a + 2, d = a + 3; idx.push(a, b, c, b, d, c); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+  const m = new THREE.Mesh(g, mat);
+  const sh = new THREE.Shape(prof.map(([z, y]) => new THREE.Vector2(z + off, y)));     // the end caps
+  for (const sgn of [-1, 1]) {
+    const cg = new THREE.ShapeGeometry(sh); cg.rotateY(sgn > 0 ? -Math.PI / 2 : Math.PI / 2);
+    if (sgn > 0) cg.scale(1, 1, -1);
+    const cap = new THREE.Mesh(cg, mat); cap.position.x = sgn * len / 2; cap.userData.noInk = true; m.add(cap);
+  }
+  return m;
+}
+// a ceiling rosette: petals round a boss, lathed
+const ROSETTE = (() => { const pts = [[0.001, 0], [0.2, 0], [0.19, -0.015], [0.16, -0.02], [0.15, -0.035], [0.11, -0.04], [0.1, -0.06], [0.05, -0.07], [0.03, -0.09], [0.001, -0.095]].reverse().map(([x, y]) => new THREE.Vector2(x, y));   // (centre first: its faces look down)
+  const g = new THREE.LatheGeometry(pts, 24), p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) { const a = Math.atan2(p.getZ(i), p.getX(i)), r = Math.hypot(p.getX(i), p.getZ(i)), k = 1 + 0.1 * Math.cos(a * 8) * Math.min(1, r / 0.1); p.setX(i, p.getX(i) * k); p.setZ(i, p.getZ(i) * k); }
+  g.computeVertexNormals(); return g; })();
+const SKIRT = [[0, 0], [0.045, 0], [0.045, 0], [0.045, 0.014], [0.038, 0.022], [0.038, 0.022], [0.034, 0.19], [0.034, 0.19],
+  [0.04, 0.198], ...arc(0.04, 0.214, 0.016, -Math.PI / 2, Math.PI / 2, 5).slice(1), [0.034, 0.234], [0.034, 0.234],
+  ...arc(0.034, 0.262, 0.028, -Math.PI / 2, 0, 4).slice(1).map(([z, y]) => [0.068 - z, y]), [0.012, 0.286], [0.012, 0.3], [0.012, 0.3], [0, 0.3]];
+const CHAIR = [[0, 0.95], [0.018, 0.954], [0.028, 0.966], [0.028, 0.966], ...arc(0.03, 0.994, 0.024, -Math.PI / 2, Math.PI / 2, 7),
+  [0.028, 1.022], [0.028, 1.022], [0.03, 1.034], [0.02, 1.048], [0, 1.056]];
+const RAIL = [[0, 3.19], [0.012, 3.196], [0.026, 3.214], [0.031, 3.236], [0.024, 3.256], [0.012, 3.266], [0, 3.27]];
+// the crown: bed moulding, a fascia for the dentils, the corona, a bead, and a deep ogee up to the ceiling
+const crown = (H) => {
+  const y0 = H - 0.58, P = [[0, y0], [0.014, y0 + 0.004], ...arc(0.016, y0 + 0.022, 0.016, -Math.PI / 2, Math.PI / 2, 5).slice(1), [0.016, y0 + 0.038], [0.016, y0 + 0.038],
+    [0.05, y0 + 0.042], [0.05, y0 + 0.042], [0.05, y0 + 0.17], [0.05, y0 + 0.17], [0.13, y0 + 0.174], [0.13, y0 + 0.174], [0.13, y0 + 0.25], [0.13, y0 + 0.25],
+    ...arc(0.135, y0 + 0.268, 0.018, -Math.PI / 2, Math.PI / 2, 5).slice(1), [0.15, y0 + 0.288], [0.15, y0 + 0.288]];
+  for (let k = 1; k <= 10; k++) { const t = k / 10; P.push([0.15 + 0.3 * t, y0 + 0.29 + (H - y0 - 0.32) * (0.5 - 0.5 * Math.cos(Math.PI * t))]); }
+  P.push([0.45, H - 0.03], [0.45, H - 0.03], [0.47, H - 0.01], [0.47, H], [0.47, H], [0, H]);
+  return P;
+};
+
 export function buildGallery(scene, { textures }) {
   // ── 1. plan the hang: how long must the hall be? ──
   // paintings in a group (collection.js group: '…') hang together as a little 2×2 collage,
   // smaller frames close together, as ONE unit on the wall; everything else is a unit of one
-  const sizes = WORKS.map(w => frameSize(w.w / w.h, w.group ? 0.3 : 0.95));
+  const sizes = WORKS.map(w => frameSize(w.w / w.h, w.group ? 0.26 : 0.95));
   const units = [], seen = new Set();
   WORKS.forEach((w, i) => {
     if (seen.has(i)) return;
@@ -164,18 +206,32 @@ export function buildGallery(scene, { textures }) {
   }
 
   // a wall: wallpaper above the wainscot, the panelling, chair rail, skirting, picture rail, cornice
+  const ivory = paint(0xfffaf0), ivoryHi = paint(0xf3e6c9);
+  const CROWN = crown(H);
   const wall = (cx, cz, len, ry) => {
     const g = new THREE.Group(); g.position.set(cx, 0, cz); g.rotation.y = ry; room.add(g);
     flat(len, H - 1.0, wallMat(len), 0, 1.0 + (H - 1.0) / 2, 0, null, g);
     const sg = new THREE.Group(); g.add(sg);
-    put(rb(len, 1.0, 0.06, 0.01), panel, 0, 0.5, 0.03, null, sg);
-    put(rb(len, 0.07, 0.1, 0.02), trim, 0, 1.0, 0.05, null, sg);                // chair rail
-    put(rb(len, 0.16, 0.08, 0.02), trim, 0, 0.08, 0.06, null, sg);              // skirting
-    put(rb(len, 0.05, 0.06, 0.015), gilt, 0, 3.25, 0.03, null, sg);             // picture rail
-    put(rb(len, 0.22, 0.16, 0.04), trim, 0, H - 0.11, 0.08, null, sg);          // cornice
-    // raised panels on the wainscot
-    const n = Math.max(1, Math.round(len / 1.4)), pw = len / n;
-    for (let k = 0; k < n; k++) put(rb(pw - 0.24, 0.62, 0.03, 0.012), paint(0x6b5880), -len / 2 + pw * (k + 0.5), 0.52, 0.07, null, sg);
+    put(rb(len, 1.0, 0.06, 0.01), panel, 0, 0.5, 0.03, null, sg);              // the wainscot's ground
+    sg.add(sweep(SKIRT, len, ivory, 0.06));                                     // skirting: plinth, a bead, an ogee
+    sg.add(sweep(CHAIR, len, ivory, 0.06));                                     // chair rail: a fat bead between fillets
+    sg.add(sweep(RAIL, len, gilt));                                             // picture rail, gilt
+    sg.add(sweep(CROWN, len, ivory));                                           // the crown cornice
+    // dentils under the corona, a row of little blocks the length of the wall
+    {
+      const dg = [], n = Math.floor((len - 0.1) / 0.08);
+      for (let k = 0; k < n; k++) { const b = new THREE.BoxGeometry(0.042, 0.075, 0.05); b.translate(-len / 2 + 0.09 + k * 0.08, H - 0.58 + 0.105, 0.075); dg.push(b); }
+      if (dg.length) put(mergeGeometries(dg), ivoryHi, 0, 0, 0, null, sg);
+    }
+    // raised and fielded panels on the wainscot, each framed in a bolection moulding
+    const n = Math.max(1, Math.round(len / 1.3)), pw = len / n;
+    for (let k = 0; k < n; k++) {
+      const px = -len / 2 + pw * (k + 0.5), fw = pw - 0.3, fy = 0.6, fh = 0.5;
+      put(rb(fw, fh, 0.03, 0.012), paint(0x6b5880), px, fy, 0.075, null, sg);                     // the raised field
+      put(rb(fw - 0.12, fh - 0.12, 0.012, 0.004), paint(0x75628a), px, fy, 0.094, null, sg);       // its bevel
+      for (const sy of [-1, 1]) put(rb(fw + 0.1, 0.05, 0.05, 0.02), ivory, px, fy + sy * (fh / 2 + 0.025), 0.085, null, sg);   // the frame
+      for (const sx of [-1, 1]) put(rb(0.05, fh + 0.15, 0.05, 0.02), ivory, px + sx * (fw / 2 + 0.025), fy, 0.085, null, sg);
+    }
     solid.attach(sg);
     return g;
   };
@@ -218,6 +274,34 @@ export function buildGallery(scene, { textures }) {
     flat(SW, D - 1.6, new THREE.MeshBasicMaterial({ map: sky, toneMapped: false }), 0, H - 0.01, -D / 2, [Math.PI / 2, 0, 0]);
     for (const s of [-1, 1]) put(rb(0.18, 0.2, D - 1.4, 0.04), trim, s * (SW / 2 + 0.09), H - 0.1, -D / 2);
     for (let z = -1.6; z > -D + 0.8; z -= 1.4) put(rb(SW, 0.06, 0.06, 0.02), paint(0x8a8392), 0, H - 0.05, z);
+    // coffers either side of the skylight: moulded beams across and along, a gilt rosette in each
+    const bx0 = SW / 2 + 0.18, bx1 = W / 2 - 0.47, BEAM = 2.6;
+    const zs = []; for (let z = -0.6; z > -D + 0.4; z -= BEAM) zs.push(z);
+    for (const sx of [-1, 1]) {
+      const xm = sx * (bx0 + bx1) / 2, wspan = bx1 - bx0;
+      put(rb(0.2, 0.2, D - 1.0, 0.05), ivory, sx * ((bx0 + bx1) / 2), H - 0.1, -D / 2);              // a beam along the middle of the coffers
+      for (const z of zs) put(rb(wspan, 0.2, 0.2, 0.05), ivory, xm, H - 0.1, z);                  // beams across
+      for (let k = 0; k < zs.length - 1; k++) {
+        const zc = (zs[k] + zs[k + 1]) / 2;
+        for (const q of [-1, 1]) {
+          const cx = xm + q * wspan / 4, cw = wspan / 2 - 0.3, cd = BEAM - 0.3;
+          // a little moulded frame inside each coffer, and the rosette at its heart
+          for (const sz2 of [-1, 1]) put(rb(cw, 0.045, 0.045, 0.015), ivoryHi, cx, H - 0.03, zc + sz2 * cd / 2);
+          for (const sx2 of [-1, 1]) put(rb(0.045, 0.045, cd, 0.015), ivoryHi, cx + sx2 * cw / 2, H - 0.03, zc);
+          put(ROSETTE, gilt, cx, H - 0.005, zc);
+        }
+      }
+    }
+  }
+  // fluted pilasters in the corners and either side of the door: a base, the shaft, a capital
+  for (const [x, z, ry] of [[-W / 2, -D, Math.PI / 4], [W / 2, -D, -Math.PI / 4], [-W / 2, 0, 3 * Math.PI / 4], [W / 2, 0, -3 * Math.PI / 4], [-1.55, 0, Math.PI], [1.55, 0, Math.PI]]) {
+    const pg = new THREE.Group(); pg.position.set(x, 0, z); pg.rotation.y = ry; solid.add(pg);
+    put(rb(0.5, 0.32, 0.16, 0.03), ivory, 0, 0.16, 0.08, null, pg);
+    put(rb(0.4, 3.75, 0.1, 0.03), ivory, 0, 0.32 + 1.875, 0.06, null, pg);
+    for (let f = -2; f <= 2; f++) put(rb(0.035, 3.45, 0.03, 0.012), ivoryHi, f * 0.07, 0.32 + 1.875, 0.115, null, pg);
+    put(rb(0.5, 0.1, 0.16, 0.03), ivory, 0, 4.12, 0.08, null, pg);
+    put(rb(0.46, 0.12, 0.14, 0.04), gilt, 0, 4.02, 0.08, null, pg);
+    sconce(put, pg, 0, 2.35, 0.11, 0);                                       // and a sconce on each
   }
 
   // the partitions: free-standing walls down the middle, wallpapered both faces
@@ -227,11 +311,23 @@ export function buildGallery(scene, { textures }) {
     for (const lx of PART_X) {
       put(rb(PART_T, PART_H, PART_L, 0.04), paint(0xc9bbd9), lx, PART_H / 2, zc);
       for (const s of [-1, 1]) flat(PART_L - 0.02, PART_H - 1.1, wallMat(PART_L), lx + s * (PART_T / 2 + 0.003), 1.0 + (PART_H - 1.1) / 2 + 0.05, zc, [0, s * Math.PI / 2, 0]);
-      put(rb(PART_T + 0.12, 0.16, PART_L + 0.12, 0.03), trim, lx, PART_H + 0.06, zc);       // a cap
       put(rb(PART_T + 0.1, 1.0, PART_L + 0.06, 0.02), panel, lx, 0.5, zc);                  // wainscot
-      put(rb(PART_T + 0.16, 0.07, PART_L + 0.1, 0.02), trim, lx, 1.0, zc);                  // chair rail
-      put(rb(PART_T + 0.14, 0.16, PART_L + 0.1, 0.02), trim, lx, 0.08, zc);                 // skirting
+      put(rb(PART_T + 0.2, 0.08, PART_L + 0.2, 0.03), ivory, lx, PART_H + 0.13, zc);        // a cornice cap…
+      put(rb(PART_T + 0.12, 0.06, PART_L + 0.12, 0.02), gilt, lx, PART_H + 0.06, zc);       // …on a gilt band
+      // the same mouldings as the walls, run along both faces
+      for (const sd of [-1, 1]) {
+        const fg = new THREE.Group(); fg.position.set(lx + sd * (PART_T / 2 + 0.05), 0, zc); fg.rotation.y = sd * Math.PI / 2; solid.add(fg);
+        fg.add(sweep(SKIRT, PART_L + 0.06, ivory, 0.0)); fg.add(sweep(CHAIR, PART_L + 0.06, ivory, 0.0));
+        const n = 4, pw = PART_L / n;
+        for (let k = 0; k < n; k++) {
+          const px = -PART_L / 2 + pw * (k + 0.5), fw = pw - 0.26, fy = 0.6, fh = 0.5;
+          put(rb(fw, fh, 0.03, 0.012), paint(0x6b5880), px, fy, 0.015, null, fg);
+          for (const sy of [-1, 1]) put(rb(fw + 0.1, 0.05, 0.05, 0.02), ivory, px, fy + sy * (fh / 2 + 0.025), 0.025, null, fg);
+          for (const sx of [-1, 1]) put(rb(0.05, fh + 0.15, 0.05, 0.02), ivory, px + sx * (fw / 2 + 0.025), fy, 0.025, null, fg);
+        }
+      }
       cols.push([lx - PART_T / 2 - 0.45, lx + PART_T / 2 + 0.45, zc - PART_L / 2 - 0.45, zc + PART_L / 2 + 0.45]);
+      for (const e of [-1, 1]) sconce(put, solid, lx, 2.25, zc + e * (PART_L / 2 + 0.03), e > 0 ? 0 : Math.PI);   // a sconce on each end
     }
     // a bench in the gap after it (facing the art across the aisle)
     if (i < NPART - 1) {
@@ -264,7 +360,7 @@ export function buildGallery(scene, { textures }) {
   const _Y = new THREE.Vector3(0, 1, 0);
   hang.forEach(({ n, u, r }) => {
     const U = units[n], solo = U.members.length === 1;
-    const cy = solo ? HANG_Y : Math.max(HANG_Y, 1.14 + U.oh / 2);          // (a collage sits clear of the chair rail)
+    const cy = solo ? HANG_Y : Math.max(HANG_Y, 1.26 + U.oh / 2);          // (a collage sits well clear of the chair rail)
     U.members.forEach((i, mi) => hangOne(i, r, u + U.offs[mi][0], cy + U.offs[mi][1], solo));
     if (!solo) hangGroup(U, r, u, cy);
   });
@@ -297,6 +393,7 @@ export function buildGallery(scene, { textures }) {
       hood.rotation.z = Math.PI / 2; hood.rotation.x = 0.5; hood.position.set(0, top + 0.2, 0.25); g.add(hood);
       const bulb = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, lw * 0.9, 8), lampGlow);
       bulb.rotation.z = Math.PI / 2; bulb.position.set(0, top + 0.18, 0.26); bulb.userData.noInk = true; g.add(bulb);
+      wash(g, Math.max(lw * 1.6, sz.ow * 1.05), sz.oh + 0.3, top + 0.15);       // its light, falling down the canvas
     }
     // its card on the wall beside it
     const card = canvasTex(320, 200, (c, w, h) => {
@@ -327,6 +424,7 @@ export function buildGallery(scene, { textures }) {
     hood.rotation.z = Math.PI / 2; hood.rotation.x = 0.5; hood.position.set(0, top + 0.2, 0.25); g.add(hood);
     const bulb = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, lw * 0.9, 8), lampGlow);
     bulb.rotation.z = Math.PI / 2; bulb.position.set(0, top + 0.18, 0.26); bulb.userData.noInk = true; g.add(bulb);
+    wash(g, U.ow * 1.05, U.oh + 0.3, top + 0.15);
     const first = U.members[0];
     const card = canvasTex(320, 200, (c, w, h) => {
       c.fillStyle = '#fbf6ea'; c.fillRect(0, 0, w, h);
@@ -366,6 +464,42 @@ export function buildGallery(scene, { textures }) {
     return p.center.clone().addScaledVector(p.normal, 1.2).setY(EYE);
   };
   return { D, W, H, EYE, pieces, blocked, viewSpot, floor, exit: scene.getObjectByName('exit'), start: new THREE.Vector3(0, EYE, -1.6) };
+}
+
+// ── LIGHT: no real lamps (the toon paint is lit by the room's two lights), but the look of
+// light, painted on: a warm wash down each painting from its picture light, and a soft pool on
+// the wall round every sconce. Additive, so they brighten whatever they fall on ──
+const glowTex = (() => { const cv = document.createElement('canvas'); cv.width = cv.height = 128; const c = cv.getContext('2d');
+  const g = c.createRadialGradient(64, 64, 2, 64, 64, 64); g.addColorStop(0, 'rgba(255,214,150,0.9)'); g.addColorStop(0.35, 'rgba(255,200,130,0.35)'); g.addColorStop(1, 'rgba(255,190,120,0)');
+  c.fillStyle = g; c.fillRect(0, 0, 128, 128); const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+const washTex = (() => { const cv = document.createElement('canvas'); cv.width = 128; cv.height = 256; const c = cv.getContext('2d');
+  const v = c.createLinearGradient(0, 0, 0, 256); v.addColorStop(0, 'rgba(255,226,170,0)'); v.addColorStop(0.07, 'rgba(255,226,170,0.9)'); v.addColorStop(0.32, 'rgba(255,220,160,0.4)'); v.addColorStop(1, 'rgba(255,214,150,0)');
+  c.fillStyle = v; c.fillRect(0, 0, 128, 256);
+  c.globalCompositeOperation = 'destination-in';                       // and soft at the sides, like a cone of light
+  const h = c.createLinearGradient(0, 0, 128, 0); h.addColorStop(0, 'rgba(0,0,0,0)'); h.addColorStop(0.2, 'rgba(0,0,0,1)'); h.addColorStop(0.8, 'rgba(0,0,0,1)'); h.addColorStop(1, 'rgba(0,0,0,0)');
+  c.fillStyle = h; c.fillRect(0, 0, 128, 256); const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+const lightMat = (map, opacity) => new THREE.MeshBasicMaterial({ map, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+const WASH = lightMat(washTex, 0.5), GLOW = lightMat(glowTex, 0.55);
+function wash(parent, w, h, top) {                     // down from a picture light at `top`
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), WASH); m.position.set(0, top - h / 2 + 0.04, 0.14); m.userData.noInk = true; m.renderOrder = 3; m.raycast = () => {}; parent.add(m);
+}
+// a wall sconce: a brass backplate, two curling arms, a candle cup and a little lit shade on each
+function sconce(put, parent, x, y, z, ry) {
+  const g = new THREE.Group(); g.position.set(x, y, z); g.rotation.y = ry; parent.add(g);
+  const brass = paint(0xc89b45), shade = paint(0xfff0d0, { emissive: 0xffd9a0, hatch: 0 });
+  const plate = new THREE.LatheGeometry([[0.001, 0.0], [0.05, 0.0], [0.06, 0.012], [0.05, 0.022], [0.001, 0.024]].map(([a, b]) => new THREE.Vector2(a, b)), 20);
+  plate.rotateX(Math.PI / 2); plate.scale(0.9, 1.8, 1);
+  put(plate, brass, 0, 0, 0, null, g);
+  for (const s of [-1, 1]) {
+    const arm = new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(0, -0.02, 0.02), new THREE.Vector3(s * 0.06, -0.09, 0.1), new THREE.Vector3(s * 0.16, -0.05, 0.14), new THREE.Vector3(s * 0.19, 0.04, 0.14)]), 16, 0.011, 6);
+    put(arm, brass, 0, 0, 0, null, g);
+    put(new THREE.CylinderGeometry(0.03, 0.022, 0.035, 12), brass, s * 0.19, 0.055, 0.14, null, g);        // the cup
+    put(new THREE.CylinderGeometry(0.012, 0.012, 0.05, 8), paint(0xfffaf0, { hatch: 0 }), s * 0.19, 0.095, 0.14, null, g);
+    const sh = put(new THREE.CylinderGeometry(0.045, 0.075, 0.1, 16, 1, true), shade, s * 0.19, 0.15, 0.14, null, g);
+    sh.material.side = THREE.DoubleSide;
+    const glow = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.9), GLOW); glow.position.set(s * 0.19, 0.16, 0.012); glow.userData.noInk = true; glow.renderOrder = 3; glow.raycast = () => {}; g.add(glow);
+  }
+  put(new THREE.SphereGeometry(0.022, 10, 8), brass, 0, -0.06, 0.03, null, g);                               // a finial below
 }
 
 // a museum bench: a padded seat on gilt legs

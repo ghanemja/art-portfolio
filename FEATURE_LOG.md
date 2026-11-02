@@ -19,3 +19,6 @@
 - ✅ 'Hanging the paintings' screen: a crew member on a ladder hammering a nail, another in a hard hat holding the painting
 - ✅ The four-canvas photo split into four paintings, hung as a 2x2 collage (Small Worlds)
 - ✅ Brochure handed to you at the door: JanGogh Art background/medium/inspiration + the six collections with Take me there! tours
+- ✅ Collage raised clear of the chair rail
+- ✅ Elaborate mouldings: moulded skirting, chair rail, picture rail, crown cornice with dentils, framed wainscot panels, coffered ceiling with gilt rosettes, fluted pilasters
+- ✅ Sconces on partitions and pilasters; picture lights cast a warm wash on each painting
