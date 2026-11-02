@@ -26,3 +26,4 @@
 - ✅ Background woods are 3D trees (round autumn broadleaves, tiered spruces) in clumps; mountains are one ridged terrain range (meadow, autumn forest, rock, snow by height and slope)
 - ✅ Fixed the background woods floating in the air (they stood 70 up); they sit on the ground
 - ✅ Birds: geese in V formation looping round the island, swallows darting close, hawks circling over the mountains
+- ✅ Mountains painted per pixel: meadow, speckled autumn woods, rock strata with cracks, snowfields streaking down gullies, a light aerial haze instead of the bleaching fog

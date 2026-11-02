@@ -386,7 +386,7 @@ function landscape(R) {
       cols[i * 3] = c.r; cols[i * 3 + 1] = c.g; cols[i * 3 + 2] = c.b;
     }
     mg.setAttribute('color', new THREE.BufferAttribute(cols, 3));
-    const M = new THREE.Mesh(mg, paint(0xffffff, { vertexColors: true, hatch: 0.4, unique: true }));
+    const M = new THREE.Mesh(mg, mountainMat());
     g.add(M);
     ink(M, 'heavy');
   }
@@ -449,6 +449,65 @@ function islet(R, r) {
   if (r > 1.6 && R() < 0.8) { const t = R() < 0.3 ? realCypress(R) : realTree(R, { leaves: 0.45 }); t.scale.setScalar(0.6); g.add(t); }
   else if (r > 1.0) { const b = realBush(R); b.scale.setScalar(0.8); g.add(b); }
   return g;
+}
+
+// ── the mountains' paint: worked out per pixel from where each point is (its height, how steep,
+// and noise at several sizes), so it has detail a vertex grid can't hold: meadow at the foot,
+// autumn woods speckled up the lower slopes, rock in grey and brown strata with cracks on the
+// steep faces, snowfields on the high ground that break into streaks down the gullies, blue in
+// shade. Its own light haze replaces the scene fog (which bleached the whole range to cream) ──
+function mountainMat() {
+  const m = paint(0xffffff, { hatch: 0.45, unique: true });
+  m.fog = false;
+  const prev = m.onBeforeCompile;
+  m.onBeforeCompile = (sh, r) => {
+    prev(sh, r);
+    sh.vertexShader = 'varying vec3 vLP; varying vec3 vLN; varying vec3 vWP;\n' + sh.vertexShader.replace('#include <begin_vertex>',
+      '#include <begin_vertex>\nvLP = position; vLN = normal; vWP = (modelMatrix * vec4(position, 1.0)).xyz;');
+    sh.fragmentShader = `varying vec3 vLP; varying vec3 vLN; varying vec3 vWP;
+      float mh(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float mn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(mh(i), mh(i + vec2(1, 0)), f.x), mix(mh(i + vec2(0, 1)), mh(i + vec2(1, 1)), f.x), f.y); }
+      float mf(vec2 p) { float s = 0.0, a = 0.5; for (int k = 0; k < 5; k++) { s += a * mn(p); p = p * 2.03 + 7.1; a *= 0.5; } return s; }
+      ` + sh.fragmentShader
+      .replace('#include <color_fragment>', `#include <color_fragment>
+      {
+        vec3 N = normalize(vLN); float slope = 1.0 - N.y, h = vLP.y; vec2 xz = vLP.xz;
+        float big = mf(xz * 0.012), mid = mf(xz * 0.06), fine = mn(xz * 0.9);
+        // meadow at the foot, gold and olive
+        vec3 col = mix(vec3(0.74, 0.66, 0.42), vec3(0.6, 0.6, 0.36), mid);
+        // autumn woods: a canopy of dots, each tree its own colour, dark spruce among them
+        vec2 cell = floor(xz * 0.55), fr = fract(xz * 0.55) - 0.5;
+        float pick = mh(cell), dotk = smoothstep(0.5, 0.2, length(fr + (vec2(mh(cell + 3.1), mh(cell + 7.7)) - 0.5) * 0.4));
+        vec3 tree = pick < 0.25 ? vec3(0.69, 0.38, 0.18) : pick < 0.45 ? vec3(0.79, 0.55, 0.22) : pick < 0.6 ? vec3(0.56, 0.29, 0.16) : pick < 0.8 ? vec3(0.3, 0.38, 0.27) : vec3(0.62, 0.52, 0.24);
+        vec3 woods = mix(vec3(0.36, 0.3, 0.2), tree, 0.35 + 0.65 * dotk);
+        float forestK = smoothstep(2.0, 10.0, h) * (1.0 - smoothstep(55.0 + big * 30.0, 75.0 + big * 30.0, h)) * (1.0 - smoothstep(0.45, 0.62, slope));
+        col = mix(col, woods, forestK * smoothstep(0.2, 0.4, mid + 0.25));
+        // rock: grey and warm-brown strata following the height, broken by cracks and scree
+        float strata = smoothstep(0.2, 0.8, sin(h * 0.22 + mid * 3.0 + big * 5.0) * 0.5 + 0.5);
+        vec3 rock = mix(vec3(0.55, 0.52, 0.5), vec3(0.64, 0.58, 0.5), strata);
+        rock = mix(rock, vec3(0.47, 0.41, 0.36), smoothstep(0.55, 0.8, mf(xz * 0.04 + vec2(0.0, h * 0.03))) * 0.5);
+        rock *= 0.92 + 0.14 * fine;
+        rock = mix(rock, rock * 0.72, smoothstep(0.66, 0.7, mn(vec2(xz.x * 0.12 + xz.y * 0.05, h * 0.35))) * 0.8);      // cracks
+        float rockK = max(smoothstep(0.46, 0.64, slope) * smoothstep(8.0, 25.0, h), smoothstep(66.0 + big * 20.0, 88.0 + big * 20.0, h));
+        col = mix(col, rock, rockK);
+        // snow: on the high ground where it can lie, streaking down the gullies
+        float streak = mf(vec2(xz.x * 0.09, xz.y * 0.09) + vec2(0.0, h * 0.06));
+        float line = 92.0 + big * 28.0 - streak * 22.0;
+        float snowK = smoothstep(line, line + 6.0, h) * (1.0 - smoothstep(0.58, 0.78, slope));
+        vec3 snow = mix(vec3(0.97, 0.96, 0.94), vec3(0.78, 0.83, 0.9), smoothstep(0.1, -0.4, dot(N, normalize(vec3(0.45, 0.6, 0.55)))));
+        col = mix(col, snow, snowK);
+        diffuseColor.rgb = col;
+      }`)
+      .replace('#include <dithering_fragment>', `{
+        // aerial perspective: farther is paler and bluer, but never bleached away
+        float d = length(vWP - cameraPosition), k = smoothstep(180.0, 900.0, d) * 0.55;
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.86, 0.87, 0.88), k);
+      }
+      #include <dithering_fragment>`);
+  };
+  m.customProgramCacheKey = () => 'mountain';
+  return m;
 }
 
 // ── BIRDS: geese in V formation looping wide round the island, swallows darting close in, a
