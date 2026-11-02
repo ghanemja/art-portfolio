@@ -109,8 +109,22 @@
   body.viewing #offer, body.reading #offer { display: none; }
   /* the brochure: two panels either side of a fold, opening out */
   #brochure { inset: 0; z-index: 22; background: rgba(36,28,42,.55); display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; perspective: 1600px; }
+  /* parchment: warm uneven paper, fibres and blotches (SVG noise), edges browned and darkened like old vellum */
   #brochure .paper { position: relative; display: grid; grid-template-columns: 1fr 1fr; width: min(980px, 100%); max-height: calc(100vh - 32px); overflow-y: auto;
-    background: #f8f1e1; border: 2.5px solid var(--ink); border-radius: 6px; box-shadow: 6px 8px 0 rgba(42,34,48,.8); }
+    background-color: #efdfb8;
+    background-image:
+      radial-gradient(ellipse at 50% 45%, rgba(255,248,225,.75) 0%, rgba(255,244,215,.35) 45%, rgba(160,110,50,0) 70%),
+      radial-gradient(circle at 18% 22%, rgba(150,100,40,.12) 0 6%, transparent 14%),
+      radial-gradient(circle at 82% 70%, rgba(150,100,40,.1) 0 5%, transparent 12%),
+      radial-gradient(circle at 64% 12%, rgba(150,100,40,.08) 0 4%, transparent 10%),
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' seed='4'/><feColorMatrix values='0 0 0 0 .45  0 0 0 0 .3  0 0 0 0 .12  0 0 0 .28 0'/></filter><rect width='100%' height='100%' filter='url(%23f)'/></svg>"),
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='600' height='600'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='.012' numOctaves='4' seed='9'/><feColorMatrix values='0 0 0 0 .55  0 0 0 0 .38  0 0 0 0 .16  0 0 0 .5 -.12'/></filter><rect width='100%' height='100%' filter='url(%23g)'/></svg>");
+    border: 1.5px solid rgba(110,70,30,.55); border-radius: 3px;
+    box-shadow: inset 0 0 60px rgba(120,70,20,.45), inset 0 0 14px rgba(90,50,15,.5), 6px 9px 22px rgba(30,18,10,.55); }
+  #brochure .paper h2, #brochure .paper h3 { color: #4a2e1a; }
+  #brochure .left h2 { color: #a8361e !important; }
+  #brochure p, #brochure .by, #brochure .n { color: #4e3a28 !important; }
+  #brochure .left { border-right-color: rgba(110,70,30,.35) !important; }
   #brochure .paper::after { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 30px; transform: translateX(-50%); pointer-events: none;
     background: linear-gradient(90deg, rgba(42,34,48,0), rgba(42,34,48,.13) 45%, rgba(255,255,255,.4) 52%, rgba(42,34,48,0)); }
   #brochure.open .left { animation: unfoldL .8s cubic-bezier(.3,1.2,.5,1) both; transform-origin: right center; }
@@ -156,18 +170,18 @@
 { "imports": {
   "three": "https://unpkg.com/three@0.160.0/build/three.module.min.js",
   "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-  "./js/brochure.js": "./js/brochure.js?cb=39",
-  "./js/collection.js": "./js/collection.js?cb=39",
-  "./js/foliage.js": "./js/foliage.js?cb=39",
-  "./js/gallery.js": "./js/gallery.js?cb=39",
-  "./js/island.js": "./js/island.js?cb=39",
-  "./js/loading.js": "./js/loading.js?cb=39",
-  "./js/main.js": "./js/main.js?cb=39",
-  "./js/museum.js": "./js/museum.js?cb=39",
-  "./js/music.js": "./js/music.js?cb=39",
-  "./js/style.js": "./js/style.js?cb=39",
-  "./js/viewer.js": "./js/viewer.js?cb=39",
-  "./js/visitors.js": "./js/visitors.js?cb=39"
+  "./js/brochure.js": "./js/brochure.js?cb=40",
+  "./js/collection.js": "./js/collection.js?cb=40",
+  "./js/foliage.js": "./js/foliage.js?cb=40",
+  "./js/gallery.js": "./js/gallery.js?cb=40",
+  "./js/island.js": "./js/island.js?cb=40",
+  "./js/loading.js": "./js/loading.js?cb=40",
+  "./js/main.js": "./js/main.js?cb=40",
+  "./js/museum.js": "./js/museum.js?cb=40",
+  "./js/music.js": "./js/music.js?cb=40",
+  "./js/style.js": "./js/style.js?cb=40",
+  "./js/viewer.js": "./js/viewer.js?cb=40",
+  "./js/visitors.js": "./js/visitors.js?cb=40"
 } }
 </script>
 </head>
@@ -271,6 +285,6 @@
   <div class="grid"></div>
 </div>
 
-<script type="module" src="./js/main.js?cb=39"></script>
+<script type="module" src="./js/main.js?cb=40"></script>
 </body>
 </html>

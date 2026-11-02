@@ -161,6 +161,16 @@ async function enter() {
     await sleep(1500);                          // (let them get a few taps in before the build)
     inside = new THREE.Scene();
     gal = buildGallery(inside, { textures });
+    // the doorway: the island itself, seen from the door (rendered once into a picture)
+    {
+      const rt = new THREE.WebGLRenderTarget(512, 768, { samples: 4 });
+      const cam = new THREE.PerspectiveCamera(62, 512 / 768, 0.5, 1400);
+      cam.position.set(0, island.isle.position.y + 1.75, DOOR_Z + 0.6); cam.lookAt(0, island.isle.position.y + 1.2, DOOR_Z + 12);
+      framing.visible = false;
+      renderer.setRenderTarget(rt); renderer.render(outside, cam); renderer.setRenderTarget(null);
+      framing.visible = true;
+      gal.exit.material.map = rt.texture; gal.exit.material.needsUpdate = true;
+    }
     createVisitors(inside, gal, { me }).then(v => { visitors = v; }, (e) => console.warn('no visitors', e));   // (they stroll in while you look about)
   }
   me.pos.copy(gal.start); me.yaw = 0; me.pitch = 0; auto = null;

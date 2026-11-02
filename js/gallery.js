@@ -15,6 +15,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { paint, ink, mergeStatic, PAL } from './style.js';
 import { frameKit } from './museum.js';
+import { realTree } from './foliage.js';
 import { ARTIST, WORKS } from './collection.js';
 
 const W = 16, H = 4.8;                       // hall width and height (the length, D, fits the art)
@@ -337,9 +338,9 @@ export function buildGallery(scene, { textures }) {
     }
   }
   if (!NPART) { bench(put, -D / 2); cols.push([-1.1, 1.1, -D / 2 - 0.5, -D / 2 + 0.5]); }
-  // potted palms in the corners
-  for (const [x, z] of [[-W / 2 + 0.7, -D + 0.7], [W / 2 - 0.7, -D + 0.7], [-W / 2 + 0.7, -0.8], [W / 2 - 0.7, -0.8]]) {
-    palm(put, x, z);
+  // potted trees in the corners: little indoor trees with real leaves (foliage.js), in glazed urns
+  for (const [k, [x, z]] of [[-W / 2 + 0.7, -D + 0.7], [W / 2 - 0.7, -D + 0.7], [-W / 2 + 0.7, -0.8], [W / 2 - 0.7, -0.8]].entries()) {
+    pottedTree(put, room, x, z, k);
     cols.push([x - 0.5, x + 0.5, z - 0.5, z + 0.5]);
   }
 
@@ -509,16 +510,17 @@ function bench(put, z) {
   put(rb(1.9, 0.1, 0.52, 0.05), pad, 0, 0.5, z);
   for (const sx of [-0.85, 0.85]) for (const sz of [-0.22, 0.22]) put(new THREE.CylinderGeometry(0.035, 0.025, 0.4, 10), paint(PAL.gold), sx, 0.2, z + sz);
 }
-// a potted palm
-function palm(put, x, z) {
-  const pot = new THREE.LatheGeometry([[0.001, 0], [0.26, 0], [0.32, 0.5], [0.36, 0.55], [0.001, 0.55]].map(([a, b]) => new THREE.Vector2(a, b)), 20);
-  put(pot, paint(0xb9764a), x, 0, z);
-  put(new THREE.CylinderGeometry(0.04, 0.06, 1.3, 8), paint(PAL.bark), x, 1.1, z);
-  const leaf = paint(0x6d9358, { side: THREE.DoubleSide });
-  for (let k = 0; k < 7; k++) {
-    const a = k / 7 * Math.PI * 2;
-    const g = new THREE.SphereGeometry(0.5, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2); g.scale(0.32, 0.12, 1);
-    const m = put(g, leaf, x + Math.sin(a) * 0.4, 1.72, z + Math.cos(a) * 0.4, [0.5, a, 0]);
-    m.rotation.order = 'YXZ'; m.rotation.set(0.55, a, 0);
-  }
+// a potted tree: a glazed urn on a little foot, dark soil with moss, and an indoor tree
+// (a ficus, glossy green) grown from the same kit as the island's trees
+function pottedTree(put, parent, x, z, seed) {
+  let sd = 1234 + seed * 977; const R = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+  const urn = new THREE.LatheGeometry([[0.001, 0], [0.2, 0], [0.22, 0.04], [0.17, 0.08], [0.2, 0.14], [0.3, 0.3], [0.34, 0.48], [0.33, 0.58], [0.37, 0.62], [0.37, 0.66], [0.32, 0.67], [0.31, 0.6]]
+    .map(([a, b]) => new THREE.Vector2(a, b)), 32);
+  urn.computeVertexNormals();
+  put(urn, paint([0x2f5d6a, 0x7a3b2e, 0x3d4f3a, 0x2f5d6a][seed % 4], { hatch: 0.3 }), x, 0, z);
+  put(new THREE.TorusGeometry(0.345, 0.02, 8, 32), paint(PAL.gold), x, 0.48, z, [Math.PI / 2, 0, 0]);          // a gilt band
+  put(new THREE.CircleGeometry(0.31, 24), paint(0x3a2a20, { hatch: 0 }), x, 0.6, z, [-Math.PI / 2, 0, 0]);
+  const t = realTree(R, { height: 1.9 + R() * 0.3, palette: [0x4f7a3e, 0x5f8c46, 0x3f6a36, 0x6f9a50], leaves: 0.55 });
+  t.scale.setScalar(0.62); t.position.set(x, 0.58, z); t.rotation.y = R() * 6.28; parent.add(t);
+  ink(t.userData.inkOnly, 'fine');
 }

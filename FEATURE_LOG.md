@@ -29,3 +29,4 @@
 - ✅ Mountains painted per pixel: meadow, speckled autumn woods, rock strata with cracks, snowfields streaking down gullies, a light aerial haze instead of the bleaching fog
 - ✅ Sunset: streaky pink/orange sky, low sun, warm light, rosy haze; mountains carved with vertical erosion streaks and snow down the gullies (no horizontal bands)
 - ✅ Red maple branches framing the view from the top corners (phones too)
+- ✅ The doorway shows the real island (rendered from the door); corner plants are real potted trees in glazed urns; the brochure is aged parchment

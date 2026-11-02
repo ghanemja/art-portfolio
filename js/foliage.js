@@ -103,10 +103,10 @@ function limb(points, r0, r1, seg = 7) {
 
 // ── a broadleaf tree: trunk, forking boughs, twigs, and leaf clusters at the ends ──
 // returns a group with userData.crown (the part that sways), leafCol, crownH
-export function realTree(R, { height = 2.4 + R() * 1.2, cols = null, leaves = 1 } = {}) {
+export function realTree(R, { height = 2.4 + R() * 1.2, cols = null, leaves = 1, palette: pal = null } = {}) {
   const g = new THREE.Group();
-  const base = cols || AUTUMN[Math.floor(R() * AUTUMN.length)];
-  const palette = [base, base, AUTUMN[Math.floor(R() * AUTUMN.length)], R() < 0.3 ? 0x9aa84a : base].map(h => new THREE.Color(h));
+  const base = pal ? pal[0] : cols || AUTUMN[Math.floor(R() * AUTUMN.length)];
+  const palette = (pal || [base, base, AUTUMN[Math.floor(R() * AUTUMN.length)], R() < 0.3 ? 0x9aa84a : base]).map(h => new THREE.Color(h));
   const lean = new THREE.Vector3((R() - 0.5) * 0.25, 0, (R() - 0.5) * 0.25);
   const pivotY = height * 0.42;
   // the trunk, up to where it forks (below the pivot it stays put; above, it sways with the crown)
