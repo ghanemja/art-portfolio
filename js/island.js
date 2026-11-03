@@ -416,9 +416,9 @@ function landscape(R) {
 }
 
 // ── the waterfall: a ribbon off the rim, stripes scrolling down, fading into mist ──
-function waterfall(a) {
+function waterfall(a, W = 1.5) {
   const R0 = rimR(a) - 0.2, x0 = Math.sin(a) * R0, z0 = Math.cos(a) * R0;
-  const W = 1.5, LEN = 34, N = 40, pts = [], uv = [], ix = [];
+  const LEN = 34, N = 40, pts = [], uv = [], ix = [];
   const out = new THREE.Vector3(Math.sin(a), 0, Math.cos(a)), side = new THREE.Vector3(Math.cos(a), 0, -Math.sin(a));
   for (let i = 0; i <= N; i++) {
     const t = i / N, drop = t * LEN, push = 1.2 * Math.sqrt(t) + 0.3 * t;   // it arcs out, then falls
@@ -452,7 +452,7 @@ function waterfall(a) {
   pond.position.copy(pondAt).setY(0.06); pond.scale.set(1, 1, 0.75); pond.rotation.y = a; pond.userData.noInk = true; g.add(pond);
   const rim = new THREE.Mesh(new THREE.TorusGeometry(1.72, 0.12, 8, 40).rotateX(Math.PI / 2), paint(PAL.rock));
   rim.position.copy(pondAt).setY(0.05); rim.scale.set(1, 1, 0.75); rim.rotation.y = a; g.add(rim);
-  const sl = R0 - 4.2 - 1.2, stream = new THREE.Mesh(new THREE.PlaneGeometry(1.0, R0 - (R0 - 4.2) + 0.3).rotateX(-Math.PI / 2), paint(PAL.water, { hatch: 0 }));
+  const sl = R0 - 4.2 - 1.2, stream = new THREE.Mesh(new THREE.PlaneGeometry(Math.max(1.0, W * 0.6), R0 - (R0 - 4.2) + 0.3).rotateX(-Math.PI / 2), paint(PAL.water, { hatch: 0 }));
   stream.position.set(Math.sin(a) * (R0 - 2.0), 0.05, Math.cos(a) * (R0 - 2.0)); stream.rotation.y = a; stream.userData.noInk = true; g.add(stream);
   void sl;
   // mist where it gives out, and spray at the lip
@@ -461,7 +461,7 @@ function waterfall(a) {
     const p = new THREE.Mesh(new THREE.SphereGeometry(0.5 + i * 0.12, 12, 8), puffM);
     p.position.set(x0, -0.4, z0).addScaledVector(out, 0.5 + (i % 3) * 0.3).addScaledVector(side, (i - 2.5) * 0.35); p.userData.noInk = true; g.add(p);
   }
-  return { group: g, mat };
+  return { group: g, mat, keepClear: [[pondAt.x, pondAt.z, 2.0], ...[1, 2.5, 4].map(k => [Math.sin(a) * (R0 - k), Math.cos(a) * (R0 - k), 0.9])] };
 }
 
 // ── a little islet: a grass cap on a rocky drip, perhaps a tree ──
@@ -662,9 +662,13 @@ export function buildIsland(scene, { textures }) {
     isle.add(s); steps.push({ o: s, y: s.position.y, ph: i * 0.9 });
   }
 
+  // ── a second waterfall off the front-right cliff, where you see it as you fly in ──
+  const frontFall = waterfall(0.62, 2.0);
+  isle.add(frontFall.group);
+
   // ── planting round the museum ──
   {
-    const spots = [];
+    const spots = [...frontFall.keepClear];
     const ok = (x, z, r) => {
       if (inMuseum(x, z, r) || onWalk(x, z, r)) return false;
       const a = Math.atan2(x, z); if (Math.hypot(x, z) > rimR(a) - 1.2 - r) return false;
@@ -757,7 +761,7 @@ export function buildIsland(scene, { textures }) {
     for (const s of steps) s.o.position.y = s.y + Math.sin(t * 0.8 + s.ph) * 0.12;
     for (const s of islets) { s.o.position.y = s.y + Math.sin(t * s.sp + s.ph) * 0.6; s.o.rotation.y = t * 0.03 * s.sp; }
     for (const c of clouds) { const a = c.a + t * c.sp; c.o.position.x = Math.sin(a) * c.d; c.o.position.z = Math.cos(a) * c.d; }
-    fall.mat.uniforms.uT.value = t;
+    fall.mat.uniforms.uT.value = t; frontFall.mat.uniforms.uT.value = t;
     const dt = Math.min(0.05, t - (tick.last ?? t)); tick.last = t;
     leaves.tick(t, dt);
     flight.tick(t);
