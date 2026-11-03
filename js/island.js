@@ -334,8 +334,18 @@ function landscape(R) {
       { geo: spruce, n: 800, cols: [0x4f6e4a, 0x58784f, 0x46634a] },
     ];
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), v = new THREE.Vector3(), col = new THREE.Color();
-    const ray = new THREE.Raycaster(), down = new THREE.Vector3(0, -1, 0);
-    land.updateMatrixWorld(true);                   // (g has no parent yet: this is the land's local frame)
+    // the ground's height under (x, z), read straight off the land's grid: the same answer a ray
+    // shot down at it gives, but a ray tests every one of its 40,000 triangles, and 2,300 trees'
+    // worth of rays held the page up for seconds while the island was built
+    const groundAt = (x, z) => {
+      const fx = (x + SIZE / 2) / SIZE * N, fz = (z + SIZE / 2) / SIZE * N;
+      if (!(fx >= 0 && fz >= 0 && fx <= N && fz <= N)) return null;
+      const ix = Math.min(N - 1, Math.floor(fx)), iz = Math.min(N - 1, Math.floor(fz)), u = fx - ix, w = fz - iz;
+      const Y = (i, j) => p.getY(j * (N + 1) + i);
+      // (each grid square is two triangles, split corner to corner as PlaneGeometry splits it)
+      return u + w <= 1 ? Y(ix, iz) + u * (Y(ix + 1, iz) - Y(ix, iz)) + w * (Y(ix, iz + 1) - Y(ix, iz))
+        : Y(ix + 1, iz + 1) + (1 - u) * (Y(ix, iz + 1) - Y(ix + 1, iz + 1)) + (1 - w) * (Y(ix + 1, iz) - Y(ix + 1, iz + 1));
+    };
     const clumps = [];
     for (let c = 0; c < 90; c++) {
       const cx = (R() - 0.5) * 620, cz = (R() - 0.5) * 620;
@@ -350,14 +360,11 @@ function landscape(R) {
         if ((K.geo === spruce) !== (R() < (sp ? 0.8 : 0.15))) continue;
         const a = R() * 6.28, rr = cr * Math.sqrt(R()), x = cx + Math.cos(a) * rr, z = cz + Math.sin(a) * rr;
         if (Math.abs(z - river(x)) < 12) continue;
-        // (the land isn't in the scene yet, so its matrices are its own: the ray works in the
-        // landscape's local space, and the hit's y is the ground there, no GROUND_Y to take off.
-        // Taking it off again stood every tree 70 up in the air)
-        ray.set(v.set(x, 260, z), down);
-        const hit = ray.intersectObject(land)[0]; if (!hit) continue;
+        // (in the landscape's own space: no GROUND_Y to take off. Taking it off again stood every tree 70 up in the air)
+        const gy = groundAt(x, z); if (gy === null) continue;
         const s = 0.75 + R() * 0.6;
         q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), R() * 6.28);
-        m4.compose(v.set(x, hit.point.y - 0.4, z), q, sc.set(s, s * (0.85 + R() * 0.35), s));
+        m4.compose(v.set(x, gy - 0.4, z), q, sc.set(s, s * (0.85 + R() * 0.35), s));
         col.setHex(K.cols[Math.floor(R() * K.cols.length)]).offsetHSL(0, (R() - 0.5) * 0.1, (R() - 0.5) * 0.08);
         im.setColorAt(k, col); im.setMatrixAt(k++, m4);
       }
