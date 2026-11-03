@@ -416,7 +416,7 @@ function landscape(R) {
 }
 
 // ── the waterfall: a ribbon off the rim, stripes scrolling down, fading into mist ──
-function waterfall(a, W = 1.5) {
+function waterfall(a, W = 1.5, mist = 1) {
   const R0 = rimR(a) - 0.2, x0 = Math.sin(a) * R0, z0 = Math.cos(a) * R0;
   const LEN = 34, N = 40, pts = [], uv = [], ix = [];
   const out = new THREE.Vector3(Math.sin(a), 0, Math.cos(a)), side = new THREE.Vector3(Math.cos(a), 0, -Math.sin(a));
@@ -458,8 +458,8 @@ function waterfall(a, W = 1.5) {
   // mist where it gives out, and spray at the lip
   const puffM = paint(0xffffff, { soft: true, hatch: 0, opacity: 0.55 });
   for (let i = 0; i < 6; i++) {
-    const p = new THREE.Mesh(new THREE.SphereGeometry(0.5 + i * 0.12, 12, 8), puffM);
-    p.position.set(x0, -0.4, z0).addScaledVector(out, 0.5 + (i % 3) * 0.3).addScaledVector(side, (i - 2.5) * 0.35); p.userData.noInk = true; g.add(p);
+    const p = new THREE.Mesh(new THREE.SphereGeometry((0.5 + i * 0.12) * mist, 12, 8), puffM);
+    p.position.set(x0, -0.4, z0).addScaledVector(out, (0.5 + (i % 3) * 0.3) * mist).addScaledVector(side, (i - 2.5) * 0.35 * Math.max(mist, W / 1.5)); p.userData.noInk = true; g.add(p);
   }
   return { group: g, mat, keepClear: [[pondAt.x, pondAt.z, 2.0], ...[1, 2.5, 4].map(k => [Math.sin(a) * (R0 - k), Math.cos(a) * (R0 - k), 0.9])] };
 }
@@ -663,7 +663,7 @@ export function buildIsland(scene, { textures }) {
   }
 
   // ── a second waterfall off the front-right cliff, where you see it as you fly in ──
-  const frontFall = waterfall(0.62, 2.0);
+  const frontFall = waterfall(0.62, 2.0, 0.45);
   isle.add(frontFall.group);
 
   // ── planting round the museum ──
