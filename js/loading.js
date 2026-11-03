@@ -261,7 +261,7 @@ export function createUnwrap(host, total) {
       ball(b.x, b.y, b.r, b.rot, b.seed);
     }
     // the parcel
-    speed = reduce ? 6 : ending ? 3.2 : 1 + queue.length * 0.35;
+    speed = 0.8 * (reduce ? 6 : ending ? 3.2 : 1 + queue.length * 0.35);   // (a touch slower than real time, to enjoy)
     if (!cur) next();
     if (cur) {
       cur.u += dt * speed;
@@ -299,11 +299,11 @@ export function createUnwrap(host, total) {
 
   return {
     add(img, title) { const slot = added++; if (img && img.width) queue.push({ img, title, slot }); else hung.push({ img: blank(), i: slot, t: 1 }); },
-    // everything's loaded: open the backlog in a flurry, then let the last one land (never more than ~2.5 s)
+    // everything's loaded: open the backlog in a flurry, then let the last one land (never more than ~3.5 s)
     finish() {
       ending = true;
       while (queue.length > 3) { const it = queue.pop(); hung.push({ img: it.img, i: it.slot, t: 0 }); }   // (they pop onto the wall)
-      return new Promise((res) => { done = res; setTimeout(() => { if (done) { done = null; settleNow(); res(); } }, 2500); });
+      return new Promise((res) => { done = res; setTimeout(() => { if (done) { done = null; settleNow(); res(); } }, 3500); });
     },
     stop() { cancelAnimationFrame(raf); removeEventListener('resize', size); },
   };
