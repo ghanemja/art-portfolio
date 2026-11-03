@@ -229,6 +229,15 @@ export function createUnwrap(host, total) {
     if (snap > 0 && snap < 0.4 && !p.snapped) { p.snapped = true; crinkle(0.12, 0.3); }
   }
 
+  const settled = () => !scraps.length && balls.every(b => b.landed) && hung.every(h => h.t >= 1);
+  // (when time's up: put everything where it was going and draw it there, still)
+  function settleNow() {
+    if (cur) { hung.push({ img: cur.img, i: cur.idx, t: 1 }); cur = null; }
+    while (queue.length) { const it = queue.shift(); hung.push({ img: it.img, i: it.slot, t: 1 }); }
+    for (const b of balls) { b.x = b.tx; b.y = b.ty; b.landed = true; }
+    scraps.length = 0; for (const h of hung) h.t = 1;
+    last = performance.now(); frame(last); cancelAnimationFrame(raf);
+  }
   let last = performance.now(), raf = 0, done = null;
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
@@ -268,12 +277,14 @@ export function createUnwrap(host, total) {
     // the words under the parcel
     c.fillStyle = INK; c.textAlign = 'center';
     c.font = `400 ${Math.min(24, W * 0.05)}px ${HAND}`;
-    const line = cur && cur.u > 1.3 ? `“${cur.title}”` : quip;
+    const line = cur && cur.u > 1.3 ? `“${cur.title}”` : ending && !cur ? 'all unwrapped! off to the island…' : quip;
     c.fillText(line, W / 2, H * 0.86, W * 0.9);
     c.fillStyle = '#5a4e5e'; c.font = `400 ${Math.min(18, W * 0.04)}px ${HAND}`;
     c.fillText(`${hung.length} of ${total} unwrapped · ${balls.length} balls of paper` + (helped ? '' : ' · click to help!'), W / 2, H * 0.86 + 30, W * 0.94);
     void KRAFT_L;
-    if (done && !cur && !queue.length) { const d = done; done = null; d(); }
+    // all opened and everything's come to rest: hand over (the build that follows freezes the page
+    // for a moment, so it should freeze on a still picture, not on a painting in mid-air)
+    if (done && !cur && !queue.length && settled()) { const d = done; done = null; d(); }
     raf = requestAnimationFrame(frame);
   }
   raf = requestAnimationFrame(frame);
@@ -292,7 +303,7 @@ export function createUnwrap(host, total) {
     finish() {
       ending = true;
       while (queue.length > 3) { const it = queue.pop(); hung.push({ img: it.img, i: it.slot, t: 0 }); }   // (they pop onto the wall)
-      return new Promise((res) => { done = res; setTimeout(() => { if (done) { done = null; res(); } }, 2500); });
+      return new Promise((res) => { done = res; setTimeout(() => { if (done) { done = null; settleNow(); res(); } }, 2500); });
     },
     stop() { cancelAnimationFrame(raf); removeEventListener('resize', size); },
   };

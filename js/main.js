@@ -419,7 +419,11 @@ function frame() {
 
 // go
 mode = 'outside'; setUI();
+// get the island's shaders ready and its first frames drawn while the parcels are still up, so
+// the fade shows the island, not a blank page that it pops into a moment later
+pinFraming(0); renderer.compile(outside, camera);
 requestAnimationFrame(frame);
+await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 $('#load').classList.add('hide');
 setTimeout(() => unwrap.stop(), 700);
 window.__portfolio = { enter, leave, openView, goToWork, get mode() { return mode; }, get gal() { return gal; }, get visitors() { return visitors; }, me, music, camera, orbit, frameL, frameR };   // (for the smoke test)
