@@ -63,10 +63,11 @@ export function createUnwrap(host, total) {
   })();
 
   const queue = [];          // loaded, still wrapped
-  const hung = [];           // unwrapped, on the wall: { img, slot, t }
+  const hung = [];           // unwrapped, on the wall: { img (its little copy), i, t }
   const balls = [];          // crumpled paper: flying, then on the heap
   const scraps = [];         // little torn bits in the air
-  let cur = null, added = 0, speed = 1, ending = false, quip = QUIPS[0], helped = false;
+  const decoded = [];        // decoded, waiting to be copied small
+  let cur = null, added = 0, pending = 0, speed = reduce ? 4.8 : 0.8, boost = 0, ending = false, quip = QUIPS[0], helped = false;
 
   // where the hung paintings go: a salon wall across the top
   const slot = (i) => {
@@ -76,6 +77,7 @@ export function createUnwrap(host, total) {
     return { x: W * 0.05 + cw * (col + 0.5), y: top + ch * (row + 0.5), s };
   };
   const heapAt = () => ({ x: W * 0.86, y: H * 0.9 });
+  const wallTilt = (i) => Math.sin(i * 2.3) * 0.04;
 
   function next() {
     if (!queue.length) { cur = null; return; }
@@ -102,7 +104,7 @@ export function createUnwrap(host, total) {
     c.fillStyle = 'rgba(42,34,48,0.25)'; c.fillRect(-w / 2 - b + 4, -h / 2 - b + 6, w + 2 * b, h + 2 * b);
     c.fillStyle = g; c.fillRect(-w / 2 - b, -h / 2 - b, w + 2 * b, h + 2 * b);
     c.drawImage(img, -w / 2, -h / 2, w, h);
-    c.strokeStyle = INK; c.lineWidth = Math.max(1.5, b * 0.18);
+    c.strokeStyle = INK; c.lineWidth = Math.max(1.5 / s, b * 0.18);       // (at least 1.5 px on screen, however small it's drawn)
     c.strokeRect(-w / 2 - b, -h / 2 - b, w + 2 * b, h + 2 * b); c.strokeRect(-w / 2, -h / 2, w, h);
     c.restore();
   }
@@ -146,7 +148,7 @@ export function createUnwrap(host, total) {
     if (fly > 0) {                                                     // up to its place on the wall
       const e = ease(fly), s = 1 - e * (1 - dest.s / Math.max(w, h));
       const fx = x + (dest.x - x) * e, fy = y + (dest.y - y) * e - Math.sin(e * Math.PI) * H * 0.12;
-      framed(p.img, fx, fy, w, h, p.tilt * (1 - e) + Math.sin(e * 9) * 0.05 * (1 - e), s);
+      framed(p.img, fx, fy, w, h, p.tilt * (1 - e) + Math.sin(e * 9) * 0.05 * (1 - e) + wallTilt(p.idx) * e, s);
       return;
     }
     // the painting under the paper, popping once it's free
@@ -163,7 +165,7 @@ export function createUnwrap(host, total) {
     const hw = w / 2, hh = h / 2;
     const flaps = [[[-hw, -hh], [hw, -hh]], [[hw, -hh], [hw, hh]], [[hw, hh], [-hw, hh]], [[-hw, hh], [-hw, -hh]]];
     const crumple = clamp((u - 1.2) / 0.3);
-    if (crumple > 0 && !p.crumpled) {                                    // scrunch them up and toss them on the heap
+    if (crumple >= 1 && !p.crumpled) {                                   // scrunched up small: now they're balls, tossed on the heap
       p.crumpled = true; crinkle(0.6, 0.6);
       flaps.forEach(([a, b], k) => {
         const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, hp = heapAt();
@@ -185,8 +187,8 @@ export function createUnwrap(host, total) {
       const k2 = 1 - ease(crumple) * 0.85;
       const P = [a, b, [ax, ay]].map(([px, py]) => { const fx = mx * 1.5 + (px - mx * 1.5) * k2, fy = my * 1.5 + (py - my * 1.5) * k2; return crumple > 0 ? [fx, fy] : [px, py]; });
       c.beginPath(); c.moveTo(P[0][0], P[0][1]); c.lineTo(P[1][0], P[1][1]);
-      torn(P[1][0], P[1][1], P[2][0], P[2][1], R, f > 0 ? 6 : 0);
-      torn(P[2][0], P[2][1], P[0][0], P[0][1], R, f > 0 ? 6 : 0);
+      torn(P[1][0], P[1][1], P[2][0], P[2][1], R, 6 * clamp(f * 6));
+      torn(P[2][0], P[2][1], P[0][0], P[0][1], R, 6 * clamp(f * 6));   // (the tear opens up, not all at once)
       c.closePath();
       c.fillStyle = kraft; c.fill();
       if (s > 0) { c.fillStyle = 'rgba(255,236,200,0.35)'; c.fill(); }   // folded over: its paler inside shows
@@ -232,8 +234,9 @@ export function createUnwrap(host, total) {
   const settled = () => !scraps.length && balls.every(b => b.landed) && hung.every(h => h.t >= 1);
   // (when time's up: put everything where it was going and draw it there, still)
   function settleNow() {
-    if (cur) { hung.push({ img: cur.img, i: cur.idx, t: 1 }); cur = null; }
-    while (queue.length) { const it = queue.shift(); hung.push({ img: it.img, i: it.slot, t: 1 }); }
+    if (cur) { hung.push({ img: cur.thumb, i: cur.idx, t: 1 }); cur = null; }
+    while (queue.length) { const it = queue.shift(); hung.push({ img: it.thumb, i: it.slot, t: 1 }); }
+    while (decoded.length) { const it = decoded.shift(); pending--; hung.push({ img: it.thumb, i: it.slot, t: 1 }); }
     for (const b of balls) { b.x = b.tx; b.y = b.ty; b.landed = true; }
     scraps.length = 0; for (const h of hung) h.t = 1;
     last = performance.now(); frame(last); cancelAnimationFrame(raf);
@@ -250,7 +253,12 @@ export function createUnwrap(host, total) {
     c.fillStyle = INK; c.textAlign = 'center'; c.textBaseline = 'middle';
     c.font = `700 ${Math.min(52, W * 0.09)}px ${SCRIPT}`; c.fillText('unwrapping the collection…', W / 2, Math.max(34, H * 0.05));
     // the wall of what's been opened
-    for (const hg of hung) { hg.t = Math.min(1, hg.t + dt * 4); const s = slot(hg.i); const [w, h] = dims(hg.img), k = s.s / Math.max(w, h); framed(hg.img, s.x, s.y, w * k, h * k, Math.sin(hg.i * 2.3) * 0.04, 0.6 + 0.4 * ease(hg.t)); }
+    // (drawn exactly as a flying painting ends its flight: same size, frame and tilt, so it doesn't jump)
+    for (const hg of hung) {
+      hg.t = Math.min(1, hg.t + dt * 4); if (hg.t <= 0) continue;
+      const s = slot(hg.i), [w, h] = dims(hg.img), k = s.s / Math.max(w, h);
+      framed(hg.img, s.x, s.y, w, h, wallTilt(hg.i), k * (0.6 + 0.4 * ease(hg.t)));
+    }
     // the heap of crumpled paper
     for (const b of balls) {
       if (!b.landed) {
@@ -260,13 +268,22 @@ export function createUnwrap(host, total) {
       }
       ball(b.x, b.y, b.r, b.rot, b.seed);
     }
+    // copy the newly decoded paintings small, a few milliseconds' worth a frame
+    for (const t0 = performance.now(); decoded.length && performance.now() - t0 < 4;) {
+      const it = decoded.shift(); pending--;
+      if (ending && queue.length >= 2) hung.push({ img: it.thumb, i: it.slot, t: -(hung.length % 8) * 0.06 }); else queue.push(it);
+    }
     // the parcel
-    speed = 0.8 * (reduce ? 6 : ending ? 3.2 : 1 + queue.length * 0.35);   // (a touch slower than real time, to enjoy)
+    // how fast: a touch slower than real time, to enjoy; quicker when lots are waiting (but not frantic),
+    // and quicker for a moment after a click. It eases toward that, so it never lurches
+    const want = 0.8 * (reduce ? 6 : ending ? 3.2 : Math.min(2.4, 1 + queue.length * 0.12)) * (1 + boost);
+    boost = Math.max(0, boost - dt * 1.5);
+    speed += (want - speed) * clamp(dt * 3);
     if (!cur) next();
     if (cur) {
       cur.u += dt * speed;
       drawParcel(cur, dt);
-      if (cur.u >= 2.2) { hung.push({ img: cur.img, i: cur.idx, t: 1 }); next(); }
+      if (cur.u >= 2.2) { hung.push({ img: cur.thumb, i: cur.idx, t: 1 }); next(); }
     }
     // scraps in the air
     for (let i = scraps.length - 1; i >= 0; i--) {
@@ -284,7 +301,7 @@ export function createUnwrap(host, total) {
     void KRAFT_L;
     // all opened and everything's come to rest: hand over (the build that follows freezes the page
     // for a moment, so it should freeze on a still picture, not on a painting in mid-air)
-    if (done && !cur && !queue.length && settled()) { const d = done; done = null; d(); }
+    if (done && !cur && !queue.length && !pending && settled()) { const d = done; done = null; d(); }
     raf = requestAnimationFrame(frame);
   }
   raf = requestAnimationFrame(frame);
@@ -293,19 +310,44 @@ export function createUnwrap(host, total) {
   cv.addEventListener('pointerdown', () => {
     helped = true;
     try { AC = AC || new (window.AudioContext || window.webkitAudioContext)(); AC.resume(); } catch { /* no sound */ }
-    if (cur) cur.u = Math.min(2.2, cur.u + (cur.u < 0.65 ? 0.65 - cur.u : 0.3));
+    boost = Math.min(3, boost + 1.5);                                   // (a burst of speed, not a jump: no skipped frames)
     crinkle(0.25, 0.5);
   });
 
   return {
-    add(img, title) { const slot = added++; if (img && img.width) queue.push({ img, title, slot }); else hung.push({ img: blank(), i: slot, t: 1 }); },
+    // each painting is decoded off the main thread and copied small (one for the parcel, a tiny one
+    // for the wall) before it joins the queue: drawing the full-size picture the first time made the
+    // browser decode it right then, a hitch each time a parcel tore open; and shrinking 50 of them
+    // onto the wall every frame was slow
+    add(img, title) {
+      const slot = added++;
+      if (!(img && img.width)) { hung.push({ img: blank(), i: slot, t: 1 }); return; }
+      pending++;
+      // (from the file's bytes, already in the cache: decoding a blob happens off the main thread; an <img> doesn't)
+      const src = img.currentSrc || img.src;
+      (src ? fetch(src).then(r => r.blob()) : Promise.reject()).catch(() => img)
+        .then((from) => Promise.all([small(from, 768, img), small(from, 160, img)]))
+        .then(([big, thumb]) => decoded.push({ img: big, thumb, title, slot }));
+    },
     // everything's loaded: open the backlog in a flurry, then let the last one land (never more than ~3.5 s)
     finish() {
       ending = true;
-      while (queue.length > 3) { const it = queue.pop(); hung.push({ img: it.img, i: it.slot, t: 0 }); }   // (they pop onto the wall)
+      for (let k = 0; queue.length > 2; k++) { const it = queue.pop(); hung.push({ img: it.thumb, i: it.slot, t: -k * 0.12 }); }   // (they pop onto the wall, one after another)
       return new Promise((res) => { done = res; setTimeout(() => { if (done) { done = null; settleNow(); res(); } }, 3500); });
     },
     stop() { cancelAnimationFrame(raf); removeEventListener('resize', size); },
   };
+}
+// a smaller copy of a picture (longest side at most n px), decoded and resized off the main thread
+// where the browser can (createImageBitmap), else drawn small on a canvas
+function small(from, n, img) {
+  const k = Math.min(1, n / Math.max(img.width, img.height)), w = Math.max(1, Math.round(img.width * k)), h = Math.max(1, Math.round(img.height * k));
+  return (window.createImageBitmap ? createImageBitmap(from, { resizeWidth: w, resizeHeight: h, resizeQuality: 'high' }) : Promise.reject())
+    .catch(() => shrink(img, n));
+}
+function shrink(img, n) {
+  const k = Math.min(1, n / Math.max(img.width, img.height)), b = document.createElement('canvas');
+  b.width = Math.max(1, Math.round(img.width * k)); b.height = Math.max(1, Math.round(img.height * k));
+  b.getContext('2d').drawImage(img, 0, 0, b.width, b.height); return b;
 }
 function blank() { const b = document.createElement('canvas'); b.width = 4; b.height = 3; const x = b.getContext('2d'); x.fillStyle = '#efe4cc'; x.fillRect(0, 0, 4, 3); return b; }
