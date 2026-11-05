@@ -20,6 +20,8 @@ SAMPLES = arg("--samples", 32)
 
 random.seed(7)
 FPS = 30
+FSTART = arg("--fstart", -1)
+FEND = arg("--fend", -1)
 
 # ---------------------------------------------------------------- reset
 bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -540,6 +542,8 @@ for food in foods:
     for (cx, cy, rx, ry, rot) in food["prints"]:
         o = poly_curve("scribble_outline", outline_pts(cx, cy, rx, ry, rot), 0.016, out_m)
         h = poly_curve("scribble_fill", hatch_pts(cx, cy, rx, ry, rot), 0.021, fill_m)
+        for c in (o, h):  # drawn on the "glass", so no shadows on the plate
+            c.visible_shadow = False; c.visible_diffuse = False; c.visible_glossy = False
         draw_on(o, t, t + 7); draw_on(h, t + 6, t + 14)
         events.append(dict(type="scribble", start=t, end=t + 14))
         strokes += [(o, t), (h, t + 6)]
@@ -591,6 +595,10 @@ if STILL >= 0:
     scene.render.filepath = os.path.join(OUT, f"still_{STILL:04d}.png")
     bpy.ops.render.render(write_still=True)
 else:
+    if FSTART > 0:
+        scene.frame_start = FSTART
+    if FEND > 0:
+        scene.frame_end = FEND
     scene.render.filepath = os.path.join(OUT, "f_")
     bpy.ops.render.render(animation=True)
 print("FRAMES", scene.frame_end)
