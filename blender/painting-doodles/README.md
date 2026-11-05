@@ -3,17 +3,17 @@
 Each reel is 1080×1920 (9:16), 30 fps and about 13–14 seconds long, with sound. It goes like this:
 
 1. **Unwrapping.** The canvas arrives as a parchment parcel tied with twine: a warm cream sheet
-   with soft mottling, faint fibres, tea-coloured stains and browned, torn (deckled) edges. The
-   flaps' torn edges overlap each other with a soft contact shadow. The parcel drops in and lands
-   with a little squash, and the twine snaps and whips back to the edges. Then each flap peels like
-   paper, not like a hard cover. A cylinder curl travels from its corner across a 22×22 mesh of the
-   flap. The paper sags under its own weight and flutters, starts slowly, flops over and settles
-   with a tiny bounce. It is lit per pixel: the roll darkens as it turns from the light, catches a
-   highlight, its underside is shaded, and creases show more as it flexes. A soft shadow, taken
-   from the lifted paper's real silhouette, follows the curl. Each flap is then crumpled
-   progressively into a ball (the same mesh gathered up with wrinkles), which is tossed off-screen
-   spinning. Underneath is the blank primed canvas, in the painting's exact box or oval
-   (`unwrap.py`).
+   with soft mottling, faint fibres, pale tea-coloured stains and torn (deckled) edges. The edges
+   are thin and slightly translucent, not browned, because brown edges read as burnt. The flaps'
+   torn edges overlap each other with a soft contact shadow. The parcel drops in and lands with a
+   little squash, and the twine snaps and whips back to the edges. Each flap then peels like paper:
+   a cylinder curl travels from its corner across a 22×22 mesh of the flap. The paper sags and
+   flutters, starts slowly, flops over and settles with a tiny bounce. It is lit per pixel (the
+   roll darkens and catches a highlight, its underside is shaded, creases show as it flexes), and
+   a soft shadow taken from the lifted paper's silhouette follows the curl. Then each sheet drops
+   away like dropped paper: it falls, drifting side to side and tilting into each swing, with a
+   ripple running through it, off the bottom of the screen. Underneath is the blank primed canvas,
+   in the painting's exact box or oval (`unwrap.py`).
 2. **Doodle.** A crayon doodle of the painting is scribbled onto the canvas, sitting exactly where the
    painting will be. The doodle is made from the painting itself: the painting is simplified into a
    few big colour shapes, and each shape is coloured in with zig-zag hatching and outlined in a darker
@@ -47,7 +47,7 @@ chirp inside each lip-pop):
 - the twinkles get at most a barely-there airy shimmer
 
 The audio is mastered for phones: -14 LUFS integrated, true peak below -1 dBTP (two-pass ffmpeg
-`loudnorm` plus a gain top-up), stereo AAC at 48 kHz, 160 kbit/s. The effects keep their energy
+`loudnorm` to -2.8 dBTP, leaving room for the AAC encoder's overshoot, plus a gain top-up), stereo AAC at 48 kHz, 160 kbit/s. The effects keep their energy
 between 500 Hz and 4 kHz so they come through small speakers.
 
 Finished reels are in `out/`.
@@ -56,7 +56,7 @@ Finished reels are in `out/`.
 
 | Painting | Motion | Sound |
 |---|---|---|
-| Wild Horses at the Falls (`art_IMG_0658`) | the whole scene moves with the herd, with no zoom: the five horses gallop (body bob, rock and surge, legs swinging, mane and tail flutter, each horse at its own phase). Each hoof as it lands kicks up spray, a soft puff and the white water heaving, all in the painting's own colours. The river flows the way they run, with V-wakes and churn behind each horse and ripple rings from every hoof. Mist drifts off the waterfall, and the trees and bushes toss in gusts. No sparkles. | hoofbeats with splashes on the exact hoof landings, panned to each horse, the waterfall's rush, the river, leaves in gusty wind |
+| Wild Horses at the Falls (`art_IMG_0658`) | the whole scene moves with the herd: the five horses gallop in the river (body bob, rock and surge, legs, mane and tail, each at its own phase). Each hoof as it lands kicks up spray, a puff and the white water heaving. The river flows the way they run, with V-wakes and ripple rings, mist drifts off the waterfall, and the trees toss in gusts. Then the horses break out: one after another, each is cut out of the painting (GrabCut) and charges at us in perspective, growing and veering past, off the screen. Where they stood, white spray painted from the painting's own colours stays. Meanwhile the river spills over the bank and pours out over the canvas's bottom edge and out of its right edge, off the screen (`spill.py`). No sparkles. | hoofbeats with splashes on the exact landings, panned to each horse and louder as they charge at us, the waterfall's rush, the river, leaves in gusty wind, the pour |
 | Lavender Peaks Harbour (`art_IMG_2256`) | clouds drifting, harbour waves, the boat bobbing | wind, waves |
 | Castle Above the Valley (`art_IMG_5264`) | clouds drifting, the lakes rippling, the forest swaying | wind, water, leaves |
 | Winter Sun, Spinning (`art_IMG_7165`) | the sky swirling round the sun, snow shimmering, branches swaying | airy breeze, wind |
@@ -64,6 +64,9 @@ Finished reels are in `out/`.
 | Sun-Melted Sea (`art_IMG_9615`) | sun glints sliding on the water, waves rolling, the sky drifting | waves, airy breeze |
 | Banana Treats for the Astronaut (`art_banana_treats_astronaut`) | the speed streaks streaming outwards, the treat stack floating | wind, airy breeze |
 | Cherry Blossom Road (`art_IMG_7158`) | blossom trees swaying with fluttering leaves, petals falling, clouds drifting | leaves, wind |
+
+The pouring water is in `spill.py`: the painting's own river, motion-blurred along the fall and
+recoloured to its blues and whites, falling under gravity and fraying into streaks.
 
 The masks and effects for each painting are in `EFFECTS` in `animate.py`: polygons in 0–1 image
 coordinates, optionally narrowed by colour, and feathered. A painting without an entry gets a slow

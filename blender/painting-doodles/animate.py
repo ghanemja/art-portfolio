@@ -62,7 +62,11 @@ EFFECTS = {
         dict(kind="sway", polys=[[(0.82, 0.12), (1.0, 0.08), (1.0, 0.67), (0.80, 0.67), (0.80, 0.40)]],
              colour="not_light", amp=3.2, flutter=1.4, gust=1.0),
         # five horses, left to right: palomino, dark bay, grey, bay with the white patch, dark brown
-        dict(kind="gallop", freq=2.4, sound="gallop", horses=[
+        # after galloping in place for a moment they break out: one after another each horse charges
+        # out of the painting towards us and off the bottom of the screen
+        dict(kind="gallop", freq=2.4, sound="gallop",
+             breakout=dict(start=1.7, stagger=0.3, order=[3, 1, 4, 2, 0], dir=(1.0, 0.0), vp=(0.42, 0.40)),
+             horses=[
             dict(body=[(0.07, 0.40), (0.12, 0.38), (0.20, 0.355), (0.27, 0.34), (0.30, 0.37), (0.29, 0.45),
                        (0.24, 0.50), (0.15, 0.52), (0.08, 0.50)],
                  legs=[(0.12, 0.49), (0.235, 0.49), (0.245, 0.585), (0.11, 0.585)],
@@ -74,7 +78,8 @@ EFFECTS = {
                  hair=[[(0.30, 0.34), (0.36, 0.33), (0.36, 0.40), (0.30, 0.40)]], phase=2.3, front=1),
             dict(body=[(0.38, 0.33), (0.43, 0.31), (0.46, 0.34), (0.46, 0.50), (0.42, 0.54), (0.38, 0.50)],
                  legs=[(0.39, 0.50), (0.46, 0.50), (0.46, 0.59), (0.39, 0.59)],
-                 hair=[[(0.42, 0.31), (0.46, 0.31), (0.46, 0.37), (0.43, 0.37)]], phase=4.4, front=-1),
+                 hair=[[(0.42, 0.31), (0.46, 0.31), (0.46, 0.37), (0.43, 0.37)]], phase=4.4, front=-1,
+                 light_coat=True),
             dict(body=[(0.44, 0.40), (0.50, 0.37), (0.56, 0.35), (0.60, 0.38), (0.60, 0.46), (0.57, 0.52),
                        (0.46, 0.52), (0.44, 0.47)],
                  legs=[(0.45, 0.50), (0.60, 0.50), (0.60, 0.63), (0.45, 0.63)],
@@ -85,6 +90,10 @@ EFFECTS = {
         ]),
         # spray kicked up by each hoof as it lands, and mist drifting off the waterfall
         dict(kind="spray", direction=RUN, sound="splash"),
+        # the river spills over the canvas: across the bank and over the bottom edge, and out of the
+        # right edge where it meets it, pouring off the screen (spill.py)
+        dict(kind="pour", pours=[dict(edge="bottom", span=(0.52, 0.86), lip=0.80, start=0.5),
+                                 dict(edge="right", span=(0.635, 0.725), start=0.75)], sound="pour"),
         dict(kind="mist", polys=[[(0.58, 0.16), (0.82, 0.12), (0.90, 0.40), (0.84, 0.66), (0.62, 0.64), (0.60, 0.40)]],
              source=[[(0.66, 0.0), (0.95, 0.0), (0.84, 0.25), (0.72, 0.62), (0.60, 0.62), (0.67, 0.24)]],
              direction=(-0.85, -0.45), sound="mist"),
@@ -235,6 +244,10 @@ class Animator:
                 if e["spec"].get("avoid_horses"):
                     e["mask"] = e["mask"] * (1 - herd)
         self.light = np.pad(_colour(paint, "light"), pad)
+        self.leave = {}
+        for e in self.effects:
+            if e["spec"]["kind"] == "gallop" and e["spec"].get("breakout"):
+                self._setup_breakout(e["spec"], rng)
         src = cv2.copyMakeBorder(paint, pad, pad, pad, pad, cv2.BORDER_REPLICATE).astype(np.float32)
         for e in self.effects:
             kd = e["spec"]["kind"]
@@ -254,8 +267,158 @@ class Animator:
                            / (e["mA"][..., None] + 1e-4)).astype(np.float32)
         self.sounds = sorted({sp["sound"] for sp in self.specs if sp.get("sound")})
 
+    # ---------------------------------------------------------- the breakout
+    def _setup_breakout(self, sp, rng):
+        """Cut each horse out of the painting (GrabCut, seeded by its polygons and told that white
+        water and green forest are background), and paint what was behind the herd: the forest
+        carried down from above, then white spray, from the painting's own colours, with brushy
+        strokes. A horse's reflection in the river goes with it."""
+        k, pad, paint = self.k, self.pad, self.paint
+        h, w = paint.shape[:2]
+        bo = sp["breakout"]
+        for j, hi in enumerate(bo.get("order", range(len(self.horses)))):
+            self.leave[hi] = bo.get("start", 1.7) + j * bo.get("stagger", 0.3)
+        d = np.array(bo.get("dir", (0.28, 1.0)), float)
+        self.run_out = d / np.linalg.norm(d)
+        self.vp = bo.get("vp", (0.42, 0.40))
+        hsv = cv2.cvtColor(paint, cv2.COLOR_RGB2HSV).astype(np.float32)
+        V, Sa, Hh = hsv[..., 2] / 255, hsv[..., 1] / 255, hsv[..., 0] * 2
+        white = ((V > 0.72) & (Sa < 0.2)) | ((V > 0.6) & (Hh > 170) & (Hh < 230) & (Sa > 0.2))
+        green = (Hh > 60) & (Hh < 180) & (Sa > 0.15)
+        whiteness = np.clip((V - 0.6) / 0.25, 0, 1) * np.clip((0.3 - Sa) / 0.15, 0, 1)
+
+        def poly(ps):
+            m = np.zeros((h, w), np.uint8)
+            for p in ps:
+                cv2.fillPoly(m, [np.round(np.array(p) * [w, h]).astype(np.int32)], 1)
+            return m
+        ker = lambda r: np.ones((max(1, int(r * k)) | 1,) * 2, np.uint8)
+        bgr = cv2.cvtColor(paint, cv2.COLOR_RGB2BGR)
+        holes = np.zeros((h, w), np.uint8)
+        for hi, (hz, hs) in enumerate(zip(self.horses, sp["horses"])):
+            pm = poly([hs["body"], hs["legs"]] + hs.get("hair", []))
+            gc = np.full((h, w), cv2.GC_BGD, np.uint8)
+            gc[cv2.dilate(pm, ker(41)) > 0] = cv2.GC_PR_BGD
+            gc[pm > 0] = cv2.GC_PR_FGD
+            bgish = (white if hs.get("light_coat") is None else (V > 0.86) & (Sa < 0.12)) | green
+            gc[(pm > 0) & bgish] = cv2.GC_PR_BGD
+            core = cv2.erode(poly([hs["body"]]), ker(27))
+            gc[(core > 0) & ~bgish] = cv2.GC_FGD
+            cv2.grabCut(bgr, gc, None, np.zeros((1, 65)), np.zeros((1, 65)), 8, cv2.GC_INIT_WITH_MASK)
+            m = ((gc == cv2.GC_FGD) | (gc == cv2.GC_PR_FGD)).astype(np.uint8)
+            m = cv2.morphologyEx(m, cv2.MORPH_OPEN, ker(5))
+            m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, ker(9))
+            n, cc, st, _ = cv2.connectedComponentsWithStats(m)
+            if n > 1:
+                m = (cc == 1 + np.argmax(st[1:, cv2.CC_STAT_AREA])).astype(np.uint8)
+            # the legs go with it, as far as they show against the white water
+            wsoft = np.maximum(whiteness, cv2.GaussianBlur(white.astype(np.float32), (0, 0), 1.5 * k))
+            legs = poly([hs["legs"]]).astype(np.float32) * np.clip(1 - 1.3 * wsoft, 0, 1)
+            cut = np.maximum(m.astype(np.float32), legs)
+            cut = cv2.GaussianBlur(cut, (0, 0), 0.8 * k)
+            hz["cut"] = np.pad(cut, pad)
+            # its hole: the horse, its legs, and its reflection below the waterline
+            lb = int(max(p[1] for p in hs["legs"]) * h)
+            refl = np.zeros((h, w), np.uint8)
+            xs = [int(p[0] * w) for p in hs["legs"]]
+            refl[lb:min(h, lb + int(0.09 * h)), min(xs):max(xs)] = 1
+            refl &= (V < 0.55).astype(np.uint8)
+            hole = cv2.dilate(((cut > 0.3) | (pm & (~white).astype(np.uint8)) > 0).astype(np.uint8), ker(9)) | refl
+            hz["hole"] = np.pad(cv2.GaussianBlur(hole.astype(np.float32), (0, 0), 3 * k), pad)
+            holes |= hole
+        # what was behind them
+        q = 4
+        small = cv2.resize(paint, (w // q, h // q), interpolation=cv2.INTER_AREA)
+        hs_ = cv2.dilate(cv2.resize(holes, (w // q, h // q), interpolation=cv2.INTER_NEAREST), np.ones((3, 3), np.uint8))
+        inp = cv2.resize(cv2.inpaint(small, hs_, 9, cv2.INPAINT_TELEA), (w, h), interpolation=cv2.INTER_CUBIC)
+        inp = inp.astype(np.float32)
+
+        def bn(sx, sy):
+            n_ = cv2.GaussianBlur(rng.normal(0, 1, (h, w)).astype(np.float32), (0, 0), sigmaX=sx * k, sigmaY=sy * k)
+            return n_ / (n_.std() + 1e-6)
+        wh = paint[white].astype(np.float32)
+        lum = wh.mean(1)
+        WHITE = wh[lum > np.percentile(lum, 70)].mean(0)
+        BLUE = wh[(wh[:, 2] - wh[:, 0]) > 40].mean(0)
+        yy = (np.arange(h)[:, None] / h).astype(np.float32)
+        strokes = 0.6 * bn(14, 2.2) + 0.4 * bn(2.5, 10)
+        bl = np.clip(0.02 + 0.55 * np.clip((yy - 0.53) / 0.07, 0, 1) + 0.22 * strokes, 0, 1) ** 1.3
+        spray = WHITE * (1 - bl[..., None]) + BLUE * bl[..., None]
+        spray = spray * (1 + 0.03 * bn(0.8, 0.8))[..., None]
+        wt = np.clip((yy - 0.35 + 0.035 * bn(16, 5)) / 0.07, 0, 1)   # spray rising raggedly into the trees
+        # the river below the waterline: the inpainted water, streaked sideways like the painted river
+        river = np.clip((yy - 0.6) / 0.02, 0, 1)
+        fill = inp * (1 + 0.05 * strokes[..., None]) * (1 - wt[..., None]) + spray * wt[..., None]
+        rv = cv2.GaussianBlur(inp, (0, 0), sigmaX=10 * k, sigmaY=1.0 * k) * (1 + 0.06 * bn(18, 1.5))[..., None]
+        fill = fill * (1 - river[..., None]) + rv * river[..., None]
+        fill = np.clip(fill, 0, 255)
+        self.bg = cv2.copyMakeBorder(fill, pad, pad, pad, pad, cv2.BORDER_REPLICATE).astype(np.float32)
+
+    def gone(self, hi, t):
+        """How far horse hi has left its place (0..1), t seconds into the animation."""
+        if hi not in self.leave:
+            return 0.0
+        return float(np.clip((t - self.leave[hi]) / 0.12, 0, 1))
+
+    def without_departed(self, rgba, t):
+        """The painting with every horse that has run off replaced by what was behind it."""
+        if not self.leave:
+            return rgba
+        out = rgba
+        for hi, hz in enumerate(self.horses):
+            g = self.gone(hi, t)
+            if g > 0:
+                if out is rgba:
+                    out = rgba.copy()
+                a = (hz["hole"] * g)[..., None]
+                out[..., :3] = out[..., :3] * (1 - a) + self.bg * a
+        return out
+
+    def out_path(self, hi, tau):
+        """Where a departed horse is, tau seconds after it set off: (dx, dy, scale) in painting
+        pixels, about its hooves. It charges straight at us: in perspective it grows faster and
+        faster and sweeps outwards from the vanishing point behind the herd, off the screen."""
+        hz = self.horses[hi]
+        vx, vy = self.pad + self.vp[0] * self.w, self.pad + self.vp[1] * self.h
+        sc = 1 / max(0.12, 1 - (0.42 * tau + 0.32 * tau * tau))     # perspective: ever faster as it nears
+        # each veers out to its own side to pass us by (and a little the way the herd runs)
+        sgn = 1 if hz["lmid"] >= vx + 0.02 * self.w else -1
+        veer = (sgn * (30 * tau + 90 * tau * tau) + self.run_out[0] * 40 * tau) * self.k * sc ** 0.5
+        return (hz["lmid"] - vx) * (sc - 1) + veer, (hz["lbot"] - vy) * (sc - 1), sc
+
+    @staticmethod
+    def passing(sc):
+        """A charging horse fades as it passes us (alpha 1 until it is 3.5 times its size, gone by 6)."""
+        return float(np.clip((6.0 - sc) / 2.5, 0, 1))
+
+    def sprites(self, rgba, t):
+        """Each horse that has broken out: its galloping pixels (taken through the same warp as the
+        painting) cut out, with where and how big it now is."""
+        out = []
+        if not self.leave or getattr(self, "last_map", None) is None:
+            return out
+        mx, my = self.last_map
+        for hi, hz in enumerate(self.horses):
+            if hi not in self.leave or t <= self.leave[hi]:
+                continue
+            ys, xs = np.nonzero(hz["cut"] > 0.02)
+            m = int(14 * self.k)
+            y0, y1 = max(0, ys.min() - m), min(rgba.shape[0], ys.max() + m)
+            x0, x1 = max(0, xs.min() - m), min(rgba.shape[1], xs.max() + m)
+            sx, sy = mx[y0:y1, x0:x1], my[y0:y1, x0:x1]
+            rgb = cv2.remap(np.ascontiguousarray(rgba[..., :3]), sx, sy, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+            a = cv2.remap(hz["cut"], sx, sy, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+            tau = t - self.leave[hi]
+            dx, dy, s = self.out_path(hi, tau)
+            if self.passing(s) <= 0:
+                continue
+            out.append(dict(fade=self.passing(s), hi=hi, rgb=rgb, a=a, x0=x0, y0=y0, ax=hz["lmid"], ay=hz["lbot"], dx=dx, dy=dy, s=s,
+                            tau=tau))
+        out.sort(key=lambda d: d["s"])                       # nearer (bigger) ones on top
+        return out
+
     # ---------------------------------------------------------- the hooves
-    def hoof_events(self, t0, t1):
+    def hoof_events(self, t0, t1, include_gone=False):
         """Every hoof landing between t0 and t1 (seconds of animation): (t, x, y, horse, side), x and y
         in padded-painting pixels. Each leg pair lands as two quick hits, front and back half a stride
         apart, so a horse makes the ta-ta . ta-ta of a gallop."""
@@ -269,6 +432,8 @@ class Animator:
                     tl = (base + 2 * math.pi * m) / om
                     for j, dt in enumerate((0.0, 0.055)):
                         t = tl + dt
+                        if include_gone is False and hi in self.leave and t > self.leave[hi] - 0.02:
+                            continue
                         if t0 <= t < t1:
                             x = hz["lmid"] + s * (0.5 + 0.25 * j) * hz["lhalf"]
                             out.append((t, x, hz["lbot"] - 6 * self.k, hi, s))
@@ -332,6 +497,9 @@ class Animator:
         A = sp.get("amp", 2.6) * k
         tan = 0.36
         for hi, hz in enumerate(self.horses):
+            here = 1 - self.gone(hi, t)                      # no wake once it has run off
+            if here <= 0:
+                continue
             hx, hy = hz["lmid"], hz["lbot"] - 4 * k
             bx = self._box(hx - 300 * k, hy - 50 * k, hx + 40 * k, hy + 110 * k)
             if bx is None:
@@ -343,7 +511,7 @@ class Animator:
             arm = np.exp(-((np.abs(ac) - al * tan) / (5 * k + 0.1 * np.abs(al))) ** 2) * on
             wave = np.sin(2 * math.pi * al / (15 * k) + 2 * math.pi * 2.2 * t + hi * 1.7)
             sg = np.sign(ac)
-            m = a[bx]
+            m = a[bx] * here
             dx[bx] += m * A * arm * wave * sg * n[0]
             dy[bx] += m * A * arm * wave * sg * n[1] * 0.6
             core = np.exp(-(ac / (9 * k + 0.08 * np.abs(al))) ** 2) * on
@@ -561,6 +729,7 @@ class Animator:
                 kick = np.maximum(0, np.sin(om * t + 2 * math.pi * 1.7 * fx + ph[0])) ** 3
                 dy += a * A * kick * (0.6 + 0.4 * np.sin(0.4 * X / k + 7 * t))
                 dx += a * A * 0.5 * np.sin(0.25 * Y / k + 0.3 * X / k + 5 * t + ph[1])
+        self.last_map = ((X + dx).astype(np.float32), (Y + dy).astype(np.float32))
         if not flows:
             out = cv2.remap(rgba, X + dx, Y + dy, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
         else:

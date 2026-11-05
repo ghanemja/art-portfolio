@@ -2,13 +2,13 @@
 the site's loading screen, js/loading.js, but in torn-edged parchment), drops in, the twine
 snaps, and the four flaps peel back one after another like real paper: a curl
 travels across each flap (a cylinder page-curl applied to a mesh of the flap's
-texture), the paper sags and flutters, flops over and settles, then is crumpled
-progressively into a ball and tossed off-screen. Underneath is the blank primed canvas, in
+texture), the paper sags and flutters, flops over and settles, then drops away
+like a sheet of paper: it falls, drifting side to side and tilting, off the bottom of the screen. Underneath is the blank primed canvas, in
 the painting's exact box or oval, ready for the doodle.
 
 Timeline (frames at 30 fps): 0-9 drop and land, 12 twine snaps, from 16 a flap
-starts peeling every 8 frames (22 frames each, then a 6-frame settle, a 14-frame
-crumple into a ball, and the ball's flight).
+starts peeling every 8 frames (22 frames each, then a 6-frame settle, then it
+falls away off the bottom of the screen like a dropped sheet).
 EVENTS lists the moments for the soundtrack.
 """
 import math
@@ -16,29 +16,28 @@ import numpy as np
 import cv2
 
 PARCH = np.array([233, 214, 172], np.float32)      # warm cream parchment
-PARCH_D = np.array([196, 160, 108], np.float32)    # its handled, browned edges
+PARCH_D = np.array([196, 160, 108], np.float32)    # its tea-coloured age stains
 PARCH_L = np.array([241, 228, 196], np.float32)    # the paler back
 KRAFT = PARCH
 TWINE = np.array([233, 220, 192], np.float32)
 EDGE = np.array([150, 112, 66], np.float32)
 
 T_LAND, T_SNAP, T_FLAP0, FLAP_STAG, FLAP_DUR = 9, 12, 16, 8, 22
-SETTLE, CRUMPLE, FLY = 6, 14, 14       # after a flap is over: settle bounce, crumple, fly off
+SETTLE, FALL = 6, 40                   # after a flap is over: a settle bounce, then it falls away
 
 
 def flap_start(i):
     return T_FLAP0 + i * FLAP_STAG
 
 
-END = flap_start(3) + FLAP_DUR + SETTLE + CRUMPLE + FLY
+END = flap_start(3) + FLAP_DUR + SETTLE + FALL
 EVENTS = dict(land=T_LAND, snap=T_SNAP,
               flaps=[flap_start(i) for i in range(4)],                            # each curl starts
               flap_dur=FLAP_DUR / 30.0,
               flops=[flap_start(i) + int(FLAP_DUR * 0.7) for i in range(4)],      # it flops over
               settles=[flap_start(i) + FLAP_DUR for i in range(4)],               # and lands
-              crumple=[flap_start(i) + FLAP_DUR + SETTLE for i in range(4)],
-              crumple_dur=CRUMPLE / 30.0,
-              whoosh=[flap_start(i) + FLAP_DUR + SETTLE + CRUMPLE for i in range(4)], end=END)
+              falls=[flap_start(i) + FLAP_DUR + SETTLE for i in range(4)],                # it drops away
+              fall_dur=FALL / 30.0, end=END)
 
 
 def _shift(a, d):
@@ -55,7 +54,7 @@ def ease(t):
 
 def parchment_texture(h, w, k, rng, pale=False):
     """Parchment: a warm cream ground with soft cloudy mottling, faint long fibres, a few
-    darker age stains and edges browned with handling. No specks or flecks."""
+    pale tea-coloured age stains. No specks, and no browned edges (they read as burnt)."""
     base = PARCH_L.copy() if pale else PARCH.copy()
     def blur_noise(sx, sy=None):
         n = cv2.GaussianBlur(rng.normal(0, 1, (h, w)).astype(np.float32), (0, 0), sigmaX=sx * k,
@@ -64,7 +63,7 @@ def parchment_texture(h, w, k, rng, pale=False):
     cloud = 0.6 * blur_noise(40) + 0.4 * blur_noise(14)          # big soft mottling
     fib = blur_noise(9, 0.8)                                       # faint long fibres
     grain = blur_noise(0.9)
-    # age: browner towards the edges, plus a few soft tea-coloured stains
+    # age: a few soft, pale tea-coloured stains
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
     edge = np.minimum(np.minimum(xx, w - 1 - xx), np.minimum(yy, h - 1 - yy))
     edge = edge + 10 * k * blur_noise(20)
@@ -76,9 +75,9 @@ def parchment_texture(h, w, k, rng, pale=False):
     stain *= 0.5 + 0.5 * np.clip(blur_noise(10), -1, 1)
     lum = 1 + 0.045 * cloud + 0.018 * fib + 0.008 * grain
     tex = base[None, None, :] * lum[..., None]
-    st = np.clip(stain * (0.18 if pale else 0.38), 0, 0.5)[..., None]       # tea-coloured, not grey
+    st = np.clip(stain * (0.10 if pale else 0.2), 0, 0.3)[..., None]        # tea-coloured, not grey
     tex = tex * (1 - st) + (PARCH_D[None, None, :] * 1.05) * lum[..., None] * st
-    tex = tex * (1 - burn[..., None]) + (PARCH_D[None, None, :] * (1 + 0.04 * cloud[..., None])) * burn[..., None]
+    tex = tex * (1 + 0.025 * burn[..., None])            # edges a touch paler where the sheet thins
     # creases: a soft dark valley with a gently lit ridge beside it
     shade = np.zeros((h, w), np.float32)
     for _ in range(6):
@@ -311,9 +310,11 @@ class Parcel:
         d2 = sd(b, c, a) + mo * (0.6 + 0.3 * np.roll(n1, 37, 1) + 0.12 * np.roll(n2, 23, 0)) + 0.5 * k * n3
         e = np.minimum(np.minimum(d0, d1), d2)
         A = np.clip(e / (0.9 * k) + 0.5, 0, 1).astype(np.float32)
-        band = np.exp(-np.clip(e, 0, None) / (1.8 * k))[..., None]          # browned, thin torn fibres
-        F = np.dstack([self.tex * (1 - 0.16 * band), A]).astype(np.float32)
-        U = np.dstack([self.under * (1 - 0.12 * band), A]).astype(np.float32)
+        # the torn edge: thin, slightly translucent fibres, a touch paler (not browned: that reads as burnt)
+        band = np.exp(-np.clip(e, 0, None) / (1.6 * k))
+        A = A * (1 - 0.35 * band * (0.5 + 0.5 * np.clip(n3, -1, 1)))
+        F = np.dstack([np.clip(self.tex * (1 + 0.05 * band[..., None]), 0, 255), A]).astype(np.float32)
+        U = np.dstack([np.clip(self.under * (1 + 0.04 * band[..., None]), 0, 255), A]).astype(np.float32)
         ys, xs = np.nonzero(A > 0.004)
         x_0, x_1, y_0, y_1 = xs.min(), xs.max() + 1, ys.min(), ys.max() + 1
         # each pixel's (s1, u) for the per-pixel lighting
@@ -335,12 +336,7 @@ class Parcel:
             cv2.polylines(cr, [np.round((seg + 1.6 * k) * 4).astype(np.int32).reshape(-1, 1, 2)], False, 0.7,
                           max(1, int(2.0 * k)), cv2.LINE_AA, shift=2)
         cr = cv2.GaussianBlur(cr, (0, 0), 1.3 * k)[y_0:y_1, x_0:x_1]
-        rng2 = np.random.default_rng(100 + i)
-        n = self.NG
-        fl = dict(a=a, b=b, c=c, D=D, nin=nin, eb=eb, box=(x_0, y_0, x_1, y_1), s1=s1, u=u, crease=cr, F=F, U=U,
-                  jit=rng2.normal(0, 1, (n + 1, n + 1, 2)), tri_shade=rng2.uniform(0.55, 1.05, (n, n, 2)),
-                  tri_z=rng2.uniform(0, 1, (n, n, 2)), tri_flip=rng2.uniform(0, 1, (n, n, 2)),
-                  wob=rng2.uniform(-1, 1, 7), twist=rng2.uniform(1.5, 2.6) * rng2.choice([-1, 1]))
+        fl = dict(a=a, b=b, c=c, D=D, nin=nin, eb=eb, box=(x_0, y_0, x_1, y_1), s1=s1, u=u, crease=cr, F=F, U=U)
         self._fl[i] = fl
         return fl
 
@@ -363,7 +359,7 @@ class Parcel:
         spec_f = np.maximum(0, -sp * hn + cp * H[2]) ** 40 * (phi > 0.05)
         shade_f = (0.6 + 0.4 * lam_f / flat_lam)
         shade_u = (0.72 + 0.28 * lam_u / flat_lam) * (1 - 0.12 * np.exp(-((phi - math.pi / 2) / 0.45) ** 2))
-        flex = np.clip(np.abs(sp) * 1.4 + 0.25 * (phi > 0.02) + 0.9 * ec, 0, 1.6)
+        flex = np.clip(np.abs(sp) * 1.4 + 0.25 * (phi > 0.02) + 0.9 * ec, 0, 1.6)   # ec: extra flex
         cre = fl["crease"] * (0.05 + 0.2 * flex)
         F, U = fl["F"].copy(), fl["U"].copy()
         F[y_0:y_1, x_0:x_1, :3] = F[y_0:y_1, x_0:x_1, :3] * (shade_f * (1 + cre))[..., None] + (np.array([46, 40, 28], np.float32) * spec_f[..., None])
@@ -376,11 +372,8 @@ class Parcel:
         a, b, c, D, nin = fl["a"], fl["b"], fl["c"], fl["D"], fl["nin"]
         self.D = D
         o = np.array([self.px0, self.py0], np.float64)
-        t0c = flap_start(i) + FLAP_DUR + SETTLE              # crumple starts
-        tc = (f - t0c) / CRUMPLE
-        tf = (f - t0c - CRUMPLE) / 30.0                      # seconds in flight
-        if tf * 30 > FLY + 6:
-            return None
+        t0c = flap_start(i) + FLAP_DUR + SETTLE              # it starts to fall
+        tf = (f - t0c) / 30.0                                # seconds falling
         n = self.NG
         s1 = np.linspace(0, 1, n + 1)[None, :].repeat(n + 1, 0)       # along the edge
         s2 = np.linspace(0, 1, n + 1)[:, None].repeat(n + 1, 1)       # towards the apex
@@ -388,48 +381,41 @@ class Parcel:
         L = L + ((2 * s1 - 1) * 2.2 * 9 * k)[..., None] * fl["eb"]   # reach over the torn overlaps
         u = s2 * D
         foot = L - nin * u[..., None]
-        ff = min(f, t0c)                                     # the curl is over once the crumple starts
+        ff = min(f, t0c)                                     # the curl is over once it starts to fall
         phi, z, uu, t = self._geom(i, ff, s1, u)
         P = foot + nin * uu[..., None] + o
         cen = np.array([self.W / 2, self.H * 0.45])
         P = P + (P - cen) * (z * 0.00045 / k)[..., None]     # lifted paper swells a touch towards the viewer
-        ec = ease(tc) if tc > 0 else 0.0
-        rng_flip = fl["tri_flip"]
-        if tc > 0:
-            # crumpling, progressively: every bit of the flap is gathered towards a ball of paper,
-            # wrinkling on the way, then the ball is tossed off-screen spinning
+        ec = 0.0
+        shade_all = 1.0
+        if tf > 0:
+            # the sheet drops away like paper: it falls under gravity against the air, drifting side
+            # to side like a leaf, tilting into each swing (foreshortened as it tips), with a soft
+            # ripple running through it, until it is off the bottom of the screen
             G = P.reshape(-1, 2).mean(0)
-            area = 0.5 * np.linalg.norm(b - a) * D
-            rb = 0.30 * math.sqrt(area)
-            Lc = L - L.reshape(-1, 2).mean(0)
-            th = np.arctan2(Lc[..., 1], Lc[..., 0])
-            rr = np.linalg.norm(Lc, axis=-1)
-            rr = (rr / rr.max()) ** 0.55
-            wob = sum(fl["wob"][j] * np.sin((j + 2) * th + j) for j in range(len(fl["wob"]))) * 0.022
-            th2 = th + fl["twist"] * rr
-            target = G + (rb * rr * (1 + wob))[..., None] * np.stack([np.cos(th2), np.sin(th2)], -1)
-            e = ec ** 1.15
-            P = P * (1 - e) + target * e + fl["jit"] * (0.05 * D * math.sin(math.pi * min(1.0, ec)) + 0.04 * rb * e)
-            if tf > 0:   # in flight
-                out = (a + b) / 2 - c
-                out /= np.linalg.norm(out) + 1e-6
-                vx = out[0] * 1500 * k + (120 if i % 2 else -120) * k
-                vy = out[1] * 900 * k - 1000 * k
-                pos = G + np.array([vx * tf, vy * tf + 3000 * k * tf * tf])
-                ang = tf * 11 * (1 if i % 2 else -1)
-                ca, sa = math.cos(ang), math.sin(ang)
-                d = P - G
-                P = pos + np.stack([ca * d[..., 0] - sa * d[..., 1], sa * d[..., 0] + ca * d[..., 1]], -1)
-                if P[..., 0].max() < -5 or P[..., 0].min() > self.W + 5 or P[..., 1].min() > self.H + 5 \
-                        or P[..., 1].max() < -5:
-                    return None
-            z = z * (1 - ec) + ec * (20 * k)
-        F, U = (self._shaded(i, ff, fl, ec) if f > flap_start(i) else (fl["F"], fl["U"]))
+            out = (a + b) / 2 - c
+            out /= np.linalg.norm(out) + 1e-6
+            sgn = 1 if i % 2 else -1
+            w_ = 2 * math.pi * 0.85
+            ramp = min(1.0, tf / 0.35)
+            sway = 70 * k * math.sin(w_ * tf + i) * ramp
+            fall = 950 * k * tf * tf + 60 * k * tf
+            pos = G + np.array([sway + out[0] * 110 * k * tf + sgn * 30 * k * tf, fall])
+            ang = (0.32 * math.cos(w_ * tf + i) * ramp + sgn * 0.25 * tf)
+            tilt = 1 - 0.35 * abs(math.sin(w_ * tf + i)) * ramp
+            ca, sa = math.cos(ang), math.sin(ang)
+            d = P - G
+            d = np.stack([d[..., 0], d[..., 1] * tilt], -1)
+            ripple = 9 * k * np.sin(2 * math.pi * (1.3 * s1 + 0.9 * s2) - 6 * tf) * ramp
+            P = pos + np.stack([ca * d[..., 0] - sa * d[..., 1], sa * d[..., 0] + ca * d[..., 1] + ripple], -1)
+            if P[..., 1].min() > self.H + 5 or P[..., 0].min() > self.W + 5 or P[..., 0].max() < -5:
+                return None
+            z = z + (24 * k + 10 * k * np.sin(2 * math.pi * s1 - 5 * tf)) * ramp
+            shade_all = 1 - 0.12 * math.sin(w_ * tf + i) * ramp
+        F, U = (self._shaded(i, ff, fl, 0.0) if f > flap_start(i) else (fl["F"], fl["U"]))
         tris = []
         still = []
         lifted = False
-        Pc = P.reshape(-1, 2).mean(0)
-        rb_now = np.linalg.norm(P - Pc, axis=-1).max() + 1e-6
         for r in range(n):
             for q in range(n):
                 quad = [(r, q), (r, q + 1), (r + 1, q + 1), (r + 1, q)]
@@ -444,17 +430,7 @@ class Parcel:
                     if zz > 0.5:
                         lifted = True
                     under = ph >= math.pi / 2
-                    shade = 1.0
-                    if ec > 0:
-                        # facets of the crumpled ball: some show the inside, all at their own angle,
-                        # rounder and darker towards the ball's edge
-                        if rng_flip[r, q, h] < 0.45 * ec:
-                            under = not under
-                        shade = 1 - ec * (1 - fl["tri_shade"][r, q, h]) * 0.8
-                        dd = np.mean([P[j] for j in tri], 0) - Pc
-                        rad = np.linalg.norm(dd) / rb_now
-                        shade *= 1 - 0.3 * ec * rad ** 2 + 0.12 * ec * (-(dd[0] * 0.5 + dd[1] * 0.8) / rb_now)
-                        zz = zz + ec * (8 * k * fl["tri_z"][r, q, h] + 4 * k * (1 - rad))
+                    shade = shade_all
                     if ec == 0 and zz == 0 and max(phi[j] for j in tri) == 0:
                         still.append(srcp)                   # untouched: pasted in one go below
                         continue

@@ -23,6 +23,7 @@ sys.path.insert(0, HERE)
 import soundtrack  # noqa: E402
 import animate  # noqa: E402
 import unwrap  # noqa: E402
+import spill  # noqa: E402
 
 FPS = 30
 
@@ -267,6 +268,8 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
     T_ANIM = T_DONE + 8                      # the painting starts to move as the bounce settles
     T_HANDLE = T_DONE + 40                   # the handle fades in while it moves
     N = T_DONE + 14 + 140                    # ~4.7 s of life after the settle
+    if name in animate.EFFECTS and any(sp.get("breakout") for sp in animate.EFFECTS[name]):
+        N = T_ANIM + 196                     # time for the herd to break out and the river to pour
 
     if still is not None:
         print(f"timeline: flood {T_FLOOD} done {T_DONE} anim {T_ANIM} handle {T_HANDLE} end {N}", file=sys.stderr)
@@ -365,6 +368,27 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
     # ---------------- handle, small and centred, inside Instagram's safe area
     handle_img = render_handle(W, H, k, handle, ink=(72, 62, 58)) if handle else None
 
+    # ---------------- the breakout and the pour
+    pour = None
+    for sp in anim.specs:
+        if sp["kind"] == "pour":
+            pour = spill.Pour(W, H, k, (x0, y0, w, h), paint, sp["pours"])
+
+    def exit_tau(hi):
+        """How long after it sets off a breaking-out horse is wholly below the screen."""
+        hz = anim.horses[hi]
+        top = np.nonzero(hz["cut"].max(1) > 0.05)[0].min()
+        tau = 0.0
+        while tau < 6:
+            dx, dy, sc = anim.out_path(hi, tau)
+            ys_ = cy + (hz["lbot"] - pad - h / 2) + dy + (top - hz["lbot"]) * sc
+            xs_ = cx + (hz["lmid"] - pad - w / 2) + dx
+            half = (hz["cut"].max(0) > 0.05).sum() / 2 * sc
+            if ys_ > H + 10 * k or xs_ - half > W or xs_ + half < 0 or anim.passing(sc) <= 0:
+                return tau
+            tau += 0.02
+        return tau
+
     # ---------------- sound events
     events = dict(fps=FPS, frames=N, draw=[T_DRAW0, T_DRAW1], blooms=[ws + 2 for ws in wave_start],
                   wash=T_WASH, done=T_DONE, ambient=anim.sounds, anim=T_ANIM, twinkles=[],
@@ -381,8 +405,26 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
             # every hoof landing, in seconds from the start, with its place across the frame (-1..1)
             # and how far into the motion's ease-in it is, so the hoofbeats land with the spray
             t_anim = T_ANIM / FPS
-            events["hooves"] = [[t_anim + tl, (x - pad) / w * 2 - 1, min(1.0, tl / 0.6), hi]
-                                for (tl, x, y, hi, side) in anim.hoof_events(0.0, (N - T_ANIM) / FPS)]
+            dur = (N - T_ANIM) / FPS
+            events["hooves"] = [[t_anim + tl, (x - pad) / w * 2 - 1, min(1.0, tl / 0.6), hi, 1.0, 1.0]
+                                for (tl, x, y, hi, side) in anim.hoof_events(0.0, dur)]
+            # the horses that break out keep galloping, louder as they come at us, until they are gone
+            for (tl, x, y, hi, side) in anim.hoof_events(0.0, dur, include_gone=True):
+                if hi not in anim.leave or tl <= anim.leave[hi]:
+                    continue
+                tau = tl - anim.leave[hi]
+                if tau > exit_tau(hi):
+                    continue
+                dx, dy, sc = anim.out_path(hi, tau)
+                xs = cx + (x - pad - w / 2) + dx
+                events["hooves"].append([t_anim + tl, xs / W * 2 - 1, 1.0, hi, max(0.0, 1 - tau / 0.35), sc])
+            events["hooves"].sort()
+    for sp in anim.specs:
+        if sp["kind"] == "pour":
+            b = [q for q in sp["pours"] if q["edge"] == "bottom"]
+            st = min(q.get("start", 0.5) for q in sp["pours"])
+            events["pour"] = dict(start=T_ANIM / FPS + st,
+                                  land=T_ANIM / FPS + (b[0].get("start", 0.5) + 0.45 + 0.6 if b else st + 0.6))
 
     # two crayon layers: hatching sits under the paint, outlines on top until they wash away
     ink_h = np.zeros((H, W, 3), np.float32); ink_ha = np.zeros((H, W), np.float32)
@@ -490,13 +532,38 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
             # ---- the finished painting: one settle bounce, then parts of it come alive
             tp = f - T_DONE
             s = float(np.interp(tp, [0, 5, 14], [1.0, 1.025, 1.0]))
-            img = anim.frame(rgba, (f - T_ANIM) / FPS)
+            ta = (f - T_ANIM) / FPS
+            img = anim.frame(anim.without_departed(rgba, ta), ta)
             ox, oy = cx, cy
             sh_layer = place(shadow, s * 1.02, ox + 4 * k, oy + 16 * k * s, (H, W))
             frame *= (1 - 0.32 * sh_layer)[..., None]
             lay = place(img, s, ox, oy, (H, W))
             a = np.clip(lay[..., 3:4], 0, 1)
             frame = frame * (1 - a) + np.clip(place_rgb(img, s, ox, oy, (H, W)), 0, 255) * a
+            if pour is not None:
+                frame = pour.draw(frame, ta)
+            hh_, ww_ = rgba.shape[:2]
+            for spr in anim.sprites(rgba, ta):
+                # the horse charging out of the painting: its own galloping pixels, growing as it nears,
+                # with a soft shadow beneath it
+                sc = spr["s"]
+                aqx = ox + (spr["ax"] - ww_ / 2) * s
+                aqy = oy + (spr["ay"] - hh_ / 2) * s
+                c0x, c0y = ox - s * ww_ / 2, oy - s * hh_ / 2
+                tx = sc * s * spr["x0"] + sc * (c0x - aqx) + aqx + spr["dx"] * s
+                ty = sc * s * spr["y0"] + sc * (c0y - aqy) + aqy + spr["dy"] * s
+                M = np.float32([[sc * s, 0, tx], [0, sc * s, ty]])
+                sa = cv2.warpAffine(spr["a"], M, (W, H), flags=cv2.INTER_LINEAR, borderValue=0) * spr["fade"]
+                if sa.max() <= 0:
+                    continue
+                srgb = cv2.warpAffine(spr["rgb"], M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+                lift = min(1.0, spr["tau"] / 0.4)
+                d = int((6 + 14 * lift) * k * sc)
+                shd = np.zeros_like(sa)
+                shd[d:, d // 2:] = sa[:-d, :-(d // 2) or None]
+                shd = cv2.GaussianBlur(shd, (0, 0), (5 + 8 * lift) * k * sc)
+                frame *= (1 - 0.38 * shd * (1 - sa))[..., None]
+                frame = frame * (1 - sa[..., None]) + np.clip(srgb, 0, 255) * sa[..., None]
             # twinkles (silent but for a barely-there airy shimmer)
             tt = (f - T_ANIM) / FPS
             if tt > 0.6:

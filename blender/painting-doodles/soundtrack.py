@@ -2,8 +2,8 @@
 effects, nothing melodic. Everything is filtered noise, but for the tiny
 chirp inside each lip-pop.
 
-  unwrap   the parcel lands (thump), the twine snaps, each flap rustles back,
-           the paper crumples (crackle) and whooshes away
+  unwrap   the parcel lands (thump), the twine snaps, each flap rustles back
+           and slaps down, then swishes softly as it falls away
   doodle   crayon scratching
   flood    a light lip-pop for each region (lip_pop), a watery shimmer as the
            crayon lines wash away (a soft wet wipe in reels without sparkle),
@@ -115,8 +115,8 @@ def make(ev, path, seed=0):
              at(u["snap"]))
         if "flap_dur" in u:
             # parchment rustling with each curl: soft as it starts to peel, swelling as it flops over,
-            # a papery slap as it lands, then a crackle that builds as it's crumpled into a ball
-            for f, fl, st, cr in zip(u["flaps"], u["flops"], u["settles"], u["crumple"]):
+            # and a papery slap as it lands
+            for f, fl, st in zip(u["flaps"], u["flops"], u["settles"]):
                 d = (st - f) / fps + 0.12
                 L = int(d * SR)
                 tt = np.arange(L) / SR
@@ -127,11 +127,15 @@ def make(ev, path, seed=0):
                 _add(mix, 0.10 * y, at(f))
                 _add(mix, _sum(0.10 * _burst(rng, 0.09, 250, 1400, 40, 0.004),
                                0.05 * _burst(rng, 0.05, 1500, 5000, 80)), at(st))
-                d = u["crumple_dur"] + 0.06
+            # then each sheet drops away: a soft swish of air with every swing as it falls, fading out
+            for f in u.get("falls", []):
+                d = u["fall_dur"] * 0.8
                 L = int(d * SR)
-                env = (np.arange(L) / L) ** 0.7 * _env(L, 0.01, 0.06)
-                y = _crackle(rng, d, 1400) * env
-                _add(mix, 0.13 * y, at(cr))
+                tt = np.arange(L) / SR
+                swing = np.abs(np.sin(2 * np.pi * 0.85 * tt + rng.uniform(0, 3))) ** 3
+                env = swing * np.minimum(1, tt / 0.15) * np.exp(-tt * 1.6)
+                y = (_bandnoise(L, 400, 2200, rng) + 0.35 * _crackle(rng, d, 40, 1500, 6000)) * env
+                _add(mix, 0.07 * y, at(f))
         else:
             for f in u["flaps"]:
                 d = 0.42
@@ -142,7 +146,8 @@ def make(ev, path, seed=0):
                 y = _crackle(rng, d, 900) * _env(int(d * SR), 0.01, 0.12)
                 _add(mix, 0.13 * y, at(f))
         # whoosh: a band of noise sliding up as each paper ball leaves
-        wh = u["whoosh"] if isinstance(u["whoosh"], list) else [u["whoosh"]]
+        wh = u.get("whoosh", [])
+        wh = wh if isinstance(wh, list) else [wh]
         for f in wh:
             d = 0.45
             L = int(d * SR)
@@ -210,6 +215,18 @@ def make(ev, path, seed=0):
                 flick = np.clip(flick / (np.percentile(flick, 95) + 1e-9), 0.2, 1.2)
                 y = (0.05 * _bandnoise(L, 2000, 8000, rng) * flick + 0.03 * _bandnoise(L, 400, 1500, rng)) \
                     * (0.25 + 0.75 * swell)
+            elif kind == "pour" and ev.get("pour"):
+                # the river pouring off the canvas: a stream from the start, then a heavy splashing
+                # roar once it lands (off the bottom of the screen)
+                po = ev["pour"]
+                ts = t - (po["start"] - a0 / SR)
+                tl = t - (po["land"] - a0 / SR)
+                fl1 = np.abs(_band(rng.standard_normal(L), 6, 40))
+                fl1 = np.clip(fl1 / (np.percentile(fl1, 95) + 1e-9), 0.25, 1.3)
+                stream = _bandnoise(L, 700, 4500, rng) * np.clip(ts / 0.4, 0, 1)
+                roar = (_bandnoise(L, 160, 900, rng) + 0.8 * _bandnoise(L, 900, 3500, rng) * fl1) \
+                    * np.clip(tl / 0.5, 0, 1)
+                y = 0.035 * stream + 0.07 * roar
             elif kind in ("splash", "mist"):   # carried by the hoofbeats and the rush
                 continue
             elif kind == "rustle":   # leaves: soft high-passed bursts
@@ -233,12 +250,14 @@ def make(ev, path, seed=0):
                 y = np.zeros(L)
                 ys = np.zeros(L)
                 hg = [1.0, 0.85, 0.7, 0.9, 0.75]
-                for (th, pan, ramp, hi) in ev["hooves"]:
+                for hv in ev["hooves"]:
+                    th, pan, ramp, hi = hv[:4]
+                    wet, near = (hv[4], hv[5]) if len(hv) > 5 else (1.0, 1.0)
                     s0 = (th - a0 / SR) * SR
-                    g = hg[int(hi) % len(hg)] * (0.3 + 0.7 * ramp) * rng.uniform(0.75, 1.05)
+                    g = hg[int(hi) % len(hg)] * (0.3 + 0.7 * ramp) * rng.uniform(0.75, 1.05) * min(near, 2.2) ** 0.9
                     hit = _sum(0.7 * _burst(rng, 0.08, 110, 650, 42, 0.002), 0.3 * _burst(rng, 0.03, 700, 2400, 120, 0.001))
                     spl = _sum(0.35 * _burst(rng, 0.2, 1300, 6500, 16, 0.006), 0.22 * _burst(rng, 0.14, 450, 1500, 24, 0.004))
-                    snd = _sum(g * hit, np.concatenate([np.zeros(int(0.012 * SR)), g * spl]))
+                    snd = _sum(g * hit, np.concatenate([np.zeros(int(0.012 * SR)), g * wet * spl]))
                     _add(y, snd, s0)
                     _add(ys, 0.45 * pan * snd, s0)
                 _add(side, 0.65 * 0.17 * ys * fade_in[:len(ys)], a0)
@@ -273,9 +292,9 @@ def make(ev, path, seed=0):
         w.writeframes((st * 32767).astype(np.int16).tobytes())
 
 
-def master(src, dst, target=-14.0, tp=-2.0, lra=11):
+def master(src, dst, target=-14.0, tp=-2.8, lra=11):
     """Two-pass ffmpeg loudnorm: measure, then normalise linearly to `target` LUFS.
-    True-peak target sits a little under -1 dBTP so AAC encoding stays below -1."""
+    The true-peak target sits well under -1 dBTP: AAC encoding adds about 1 dB on sharp transients."""
     # tame the sharpest transients (twine snap, plops) first, so they don't cap the loudness
     lim = src + ".lim.wav"
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", src, "-af",
