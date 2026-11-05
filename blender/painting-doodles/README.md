@@ -65,6 +65,15 @@ Finished reels are in `out/`.
 | Banana Treats for the Astronaut (`art_banana_treats_astronaut`) | the speed streaks streaming outwards, the treat stack floating | wind, airy breeze |
 | Cherry Blossom Road (`art_IMG_7158`) | blossom trees swaying with fluttering leaves, petals falling, clouds drifting | leaves, wind |
 
+When the horses break out, each one charges out as its painted self for 0.4 s. It then dissolves
+(a ragged, painterly dissolve) into a hand-animated horse from `horse_rig.py`: a side-view rig
+with a four-beat rotary gallop, coloured from the painted horse. It gallops off its side of the
+screen with its own panned hoofbeats.
+
+`carousel.py` turns the finished reel into a seven-panel animated Instagram carousel (4:5 video
+panels with callouts and a lesson each, ending with a lessons-learned panel) in
+`out/carousel/`.
+
 The pouring water is in `spill.py`: the painting's own river, motion-blurred along the fall and
 recoloured to its blues and whites, falling under gravity and fraying into streaks.
 

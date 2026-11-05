@@ -24,9 +24,9 @@ ACCENT = (178, 92, 52)
 HANDLE = "@janelle.builds"
 
 PANELS = [
-    dict(slug="01_cover", title="My horses ran out of the painting",
-         sub="how this reel was made, all in code", clip=(11.7, 16.7), crop_y=330,
-         callouts=[dict(text="swipe to see how  →", at=None, label=(540, 1060), t=1.2)],
+    dict(slug="01_cover", title="My horses broke out",
+         sub="how this reel was made, all in code", clip=(11.5, 15.6), crop_y=330,
+         callouts=[dict(text="swipe to see how  >>", at=None, label=(540, 1080), t=1.0)],
          lesson=None),
     dict(slug="02_unwrap", title="1 · Paper that falls, not burns", clip=(0.25, 4.15), crop_y=380,
          callouts=[dict(text="a curl rolls across a 22×22 mesh", at=(540, 640), label=(330, 300), t=0.5),
@@ -36,27 +36,27 @@ PANELS = [
     dict(slug="03_doodle", title="2 · Doodle, then paint", clip=(4.0, 10.4), speed=1.45, crop_y=330,
          callouts=[dict(text="the doodle is the painting, cut into big colour shapes", at=(380, 800),
                         label=(540, 300), t=0.4),
-                   dict(text="paint bleeds out from the crayon hatching", at=(620, 940), label=(500, 720), t=2.6),
-                   dict(text="each fill: a 60 ms lip-pop sound", at=(780, 660), label=(640, 520), t=3.2)],
+                   dict(text="paint bleeds out from the crayon hatching", at=(620, 940), label=(400, 1040), t=2.6),
+                   dict(text="each fill: a 60 ms lip-pop sound", at=(780, 660), label=(700, 1105), t=3.2)],
          lesson="No music needed: every sound is shaped noise and tiny chirps."),
     dict(slug="04_gallop", title="3 · Only its own pixels move", clip=(10.5, 12.1), speed=0.5, crop_y=330,
-         callouts=[dict(text="a mask per horse: bob, rock, legs, mane", at=(300, 820), label=(330, 330), t=0.3),
-                   dict(text="each hoof landing = spray + ripple + hoofbeat", at=(450, 935), label=(500, 760), t=1.1),
-                   dict(text="trees toss in gusts, mist drifts off the falls", at=(840, 640), label=(620, 520), t=1.9)],
+         callouts=[dict(text="a mask per horse: bob, rock, legs, mane", at=(300, 820), label=(310, 300), t=0.3),
+                   dict(text="each hoof landing = spray + ripple + hoofbeat", at=(450, 935), label=(540, 1080), t=1.1),
+                   dict(text="trees toss in gusts, mist drifts off the falls", at=(840, 640), label=(700, 368), t=1.9)],
          lesson="One list of hoof landings drives picture and sound, so they never drift apart."),
-    dict(slug="05_breakout", title="4 · Paint turns into animation", clip=(12.0, 15.3), crop_y=330,
-         callouts=[dict(text="each horse cut out of the painting (GrabCut)", at=(700, 850), label=(420, 300), t=0.2),
-                   dict(text="it charges at you in perspective", at=(760, 930), label=(560, 760), t=0.7),
-                   dict(text="then dissolves into a hand-built rig with a real 4-beat gallop", at=(900, 800),
-                        label=(500, 520), t=1.5)],
+    dict(slug="05_breakout", title="4 · Paint turns into animation", clip=(11.9, 15.0), crop_y=330,
+         callouts=[dict(text="each horse cut out of the painting (GrabCut)", at=(640, 830), label=(330, 300), t=0.25),
+                   dict(text="it charges at you in perspective", at=(700, 930), label=(540, 1095), t=0.8),
+                   dict(text="then turns into a hand-built rig with a real 4-beat gallop", at=(880, 820),
+                        label=(690, 385), t=1.4)],
          lesson="A ragged, painterly dissolve hides the jump from paint to cartoon."),
-    dict(slug="06_pour", title="5 · The river leaves the frame", clip=(14.0, 17.3), crop_y=840,
+    dict(slug="06_pour", title="5 · The river leaves the frame", clip=(14.0, 16.85), crop_y=840,
          callouts=[dict(text="the painting's own river, recoloured to blue and foam", at=(720, 1180),
                         label=(470, 300), t=0.3),
                    dict(text="falls with gravity and frays into streaks", at=(720, 1620), label=(420, 640), t=1.1),
                    dict(text="a second stream arcs out of the side", at=(1035, 1300), label=(640, 470), t=1.9)],
          lesson="Textures must repeat seamlessly: one wrap seam and the eye finds it instantly."),
-    dict(slug="07_lessons", title="Lessons learned", clip=(13.6, 17.3), crop_y=330, lessons=[
+    dict(slug="07_lessons", title="Lessons learned", clip=(13.6, 16.85), crop_y=330, lessons=[
         "Look at stills before rendering the whole thing",
         "Say what it looks like: \"it looks burnt\" was the best note",
         "Drive picture and sound from the same events",
@@ -241,6 +241,7 @@ def build_panel(src, panel, idx, n, out_dir, still=None):
     lessons = panel.get("lessons")
     if lessons:
         litems = [pill(f"{i + 1}.  {ln}", 38) for i, ln in enumerate(lessons)]
+        clip = np.concatenate([clip, clip[::-1]], 0)         # long enough to read: there and back
     x, y, s = WIN
     nf = len(clip)
     frames = range(nf) if still is None else [min(nf - 1, int(still * FPS))]
@@ -264,7 +265,7 @@ def build_panel(src, panel, idx, n, out_dir, still=None):
             draw_callout(frame, c, img, t, panel["crop_y"])
         if lessons:
             for i, img in enumerate(litems):
-                u = ease((t - 0.3 - 0.45 * i) / 0.4)
+                u = ease((t - 0.4 - 0.6 * i) / 0.45)
                 if u > 0:
                     h_, w_ = img.shape[:2]
                     comp(frame, img, W / 2 - w_ / 2 - 30 * (1 - u), 300 + i * 132, u)
@@ -287,10 +288,10 @@ def build_panel(src, panel, idx, n, out_dir, still=None):
         af.append("atempo=0.5"); sp /= 0.5
     af.append(f"atempo={sp:.4f}")
     vol = 0.55 if lessons else 1.0
-    af += [f"volume={vol}", f"afade=t=in:d=0.25", f"afade=t=out:st={max(0, dur - 0.35):.2f}:d=0.35"]
+    af += [f"volume={vol}", "apad", f"afade=t=in:d=0.25", f"afade=t=out:st={max(0, dur - 0.35):.2f}:d=0.35"]
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", vid, "-ss", f"{t0}", "-t", f"{t1 - t0}", "-i", src,
                     "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-af", ",".join(af), "-c:a", "aac", "-b:a", "160k",
-                    "-ar", "48000", "-ac", "2", "-shortest", "-movflags", "+faststart", path], check=True)
+                    "-ar", "48000", "-ac", "2", "-t", f"{dur:.3f}", "-movflags", "+faststart", path], check=True)
     os.remove(vid)
     return path
 
@@ -309,7 +310,10 @@ def main():
         Image.fromarray(img).save(p)
         print(p)
         return
+    only = os.environ.get("PANELS")
     for i, p in enumerate(PANELS):
+        if only and str(i) not in only.split(","):
+            continue
         print(build_panel(a.src, p, i, len(PANELS), a.out))
 
 
