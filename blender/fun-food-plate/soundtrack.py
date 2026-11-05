@@ -33,20 +33,25 @@ for e in ev["events"]:
     env = np.minimum(1, np.minimum(np.arange(L), L - np.arange(L)) / (0.02 * SR))
     mix[a:b] += 0.18 * band * strokes ** 2 * env
 
-# pops: a rising blip with a fast decay
+# pops: a light lip pop ("pok") - quick upward chirp, very short
+def lip_pop(pitch=1.0):
+    L = int(0.08 * SR); t = np.arange(L) / SR
+    f = (650 + 850 * (1 - np.exp(-t / 0.005))) * pitch
+    ph = 2 * np.pi * np.cumsum(f) / SR
+    env = np.minimum(1, t * 1000) * np.exp(-t * 90)
+    tone = (np.sin(ph) + 0.25 * np.sin(2 * ph)) * env
+    click = rng.standard_normal(L) * np.exp(-t * 1500)
+    click = click - lowpass(click, 0.3)
+    return 0.6 * tone + 0.12 * click
+
 for e in ev["events"]:
-    if e["type"] not in ("pop", "clear"):
-        continue
-    a = t_of(e["frame"])
-    L = int(0.18 * SR); t = np.arange(L) / SR
+    a = t_of(e.get("frame", 0))
     if e["type"] == "pop":
-        f = 320 + 1400 * t / 0.18 ** 0.5 * np.sqrt(t)
-        amp = 0.55
-    else:  # whoosh down when the plate empties
-        f = 900 - 3000 * t
-        amp = 0.35
-    phase = 2 * np.pi * np.cumsum(f) / SR
-    mix[a:a + L] += amp * np.sin(phase) * np.exp(-t * 28) * np.minimum(1, t * 800)
+        p = lip_pop(rng.uniform(0.9, 1.1)); mix[a:a + len(p)] += p[:len(mix) - a]
+    elif e["type"] == "clear":  # soft whoosh down when the plate empties
+        L = int(0.18 * SR); t = np.arange(L) / SR
+        ph = 2 * np.pi * np.cumsum(900 - 3000 * t) / SR
+        mix[a:a + L] += 0.3 * np.sin(ph) * np.exp(-t * 28) * np.minimum(1, t * 800)
 
 # marimba tune, C major pentatonic, 120 bpm
 notes = [72, 76, 79, 76, 81, 79, 76, 74, 72, 74, 76, 79, 84, 81, 79, 76]

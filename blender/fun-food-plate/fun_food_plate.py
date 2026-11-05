@@ -192,10 +192,44 @@ mottle(bg_mat, (0.62, 0.66, 0.85), scale=1.2, amount=0.6, bump=0.04, bump_scale=
 bpy.ops.mesh.primitive_plane_add(size=30, location=(0, 0, 0))
 bpy.context.object.data.materials.append(bg_mat)
 
-plate_mat = mat("ceramic", (0.93, 0.93, 0.91), rough=0.18, spec=0.6, coat=0.4)
+plate_mat = mat("ceramic", (0.97, 0.96, 0.94), rough=0.16, spec=0.6, coat=0.5)
+def cute_plate_shader(m):
+    N = m.node_tree.nodes; L = m.node_tree.links; b = N["Principled BSDF"]
+    tc = N.new("ShaderNodeTexCoord"); sep = N.new("ShaderNodeSeparateXYZ"); L.new(tc.outputs["Object"], sep.inputs[0])
+    cmb = N.new("ShaderNodeCombineXYZ"); L.new(sep.outputs["X"], cmb.inputs["X"]); L.new(sep.outputs["Y"], cmb.inputs["Y"])
+    ln = N.new("ShaderNodeVectorMath"); ln.operation = "LENGTH"; L.new(cmb.outputs[0], ln.inputs[0])
+    def band(lo, hi):
+        mr = N.new("ShaderNodeMapRange"); mr.interpolation_type = "SMOOTHSTEP"
+        mr.inputs["From Min"].default_value = lo; mr.inputs["From Max"].default_value = hi
+        L.new(ln.outputs["Value"], mr.inputs["Value"]); return mr.outputs["Result"]
+    rim = band(1.13, 1.16)
+    mix1 = N.new("ShaderNodeMix"); mix1.data_type = "RGBA"
+    mix1.inputs[6].default_value = (0.97, 0.96, 0.94, 1); mix1.inputs[7].default_value = (1.0, 0.68, 0.78, 1)
+    L.new(rim, mix1.inputs["Factor"])
+    # thin raspberry line where the rim starts
+    line_in = band(1.105, 1.115); line_out = band(1.125, 1.135)
+    sub = N.new("ShaderNodeMath"); sub.operation = "SUBTRACT"; L.new(line_in, sub.inputs[0]); L.new(line_out, sub.inputs[1])
+    mix2 = N.new("ShaderNodeMix"); mix2.data_type = "RGBA"; mix2.inputs[7].default_value = (0.9, 0.35, 0.55, 1)
+    L.new(mix1.outputs[2], mix2.inputs[6]); L.new(sub.outputs[0], mix2.inputs["Factor"])
+    # white polka dots on the rim
+    vor = N.new("ShaderNodeTexVoronoi"); vor.inputs["Scale"].default_value = 11; vor.inputs["Randomness"].default_value = 0.2
+    L.new(tc.outputs["Object"], vor.inputs["Vector"])
+    dots = N.new("ShaderNodeMath"); dots.operation = "LESS_THAN"; dots.inputs[1].default_value = 0.2
+    L.new(vor.outputs["Distance"], dots.inputs[0])
+    on_rim = N.new("ShaderNodeMath"); on_rim.operation = "MULTIPLY"; L.new(dots.outputs[0], on_rim.inputs[0])
+    L.new(band(1.17, 1.19), on_rim.inputs[1])
+    mix3 = N.new("ShaderNodeMix"); mix3.data_type = "RGBA"; mix3.inputs[7].default_value = (1, 1, 1, 1)
+    L.new(mix2.outputs[2], mix3.inputs[6]); L.new(on_rim.outputs[0], mix3.inputs["Factor"])
+    L.new(mix3.outputs[2], b.inputs["Base Color"])
+cute_plate_shader(plate_mat)
 plate = lathe("plate", [(0, TOP), (1.1, TOP), (1.17, 0.065), (1.28, 0.125), (1.37, 0.155),
                          (1.41, 0.15), (1.42, 0.135), (1.38, 0.12), (1.22, 0.06),
                          (0.95, 0.012), (0.93, 0.0), (0.6, 0.0), (0.58, 0.01), (0, 0.01)])
+for v in plate.data.vertices:  # scalloped edge
+    r = math.hypot(v.co.x, v.co.y)
+    if r > 1.12:
+        k = 1 + 0.028 * math.cos(20 * math.atan2(v.co.y, v.co.x)) * min(1.0, (r - 1.12) / 0.2)
+        v.co.x *= k; v.co.y *= k
 plate.data.materials.append(plate_mat); subsurf(plate, 2)
 
 world = bpy.data.worlds.new("world"); scene.world = world; world.use_nodes = True
@@ -390,13 +424,28 @@ def make_cookie(name, x, y, rot, rad):
     ck = polar_slab(name, g, 0, 2 * math.pi, rmax, zfn, colfn, n_r=30, n_a=96, closed=True)
     ck.location.z = TOP; ck.data.materials.append(vcol_mat("cookie", rough=0.75, sss=0.1, bump=0.6, bump_scale=45))
     subsurf(ck, 1)
-    chip = mat("chip", (0.12, 0.05, 0.02), rough=0.3, coat=0.4)
-    for k in range(16):
-        a = random.uniform(0, 6.28); rr = rad * 0.8 * math.sqrt(random.random())
-        t = rr / rad; z = TOP + (0.012 + 0.03 * (1 - t * t))
-        c = sphere("chip", random.uniform(0.022, 0.034), (rr * math.cos(a), rr * math.sin(a), z),
-                   (1.2, 1, 0.6), chip, g, 16, 10)
-        c.rotation_euler.z = random.uniform(0, 3)
+    chip = mat("chip", (0.1, 0.045, 0.02), rough=0.28, coat=0.5)
+    placed = []
+    tries = 0
+    while len(placed) < 11 and tries < 600:   # spread out, never two chips touching
+        tries += 1
+        a = random.uniform(0, 6.28); rr = rmax(a) * 0.86 * math.sqrt(random.random())
+        px, py = rr * math.cos(a), rr * math.sin(a)
+        if any((px - qx) ** 2 + (py - qy) ** 2 < 0.09 ** 2 for qx, qy in placed):
+            continue
+        placed.append((px, py))
+        cr = random.uniform(0.026, 0.042)
+        t = rr / rmax(a)
+        zs = TOP + zfn(t, a, px, py)            # the real dough surface here
+        bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2, radius=cr, location=(px, py, zs - cr * 0.25))
+        c = bpy.context.object; c.name = "chip"; c.parent = g
+        for v in c.data.vertices:              # rough chunk, flat-ish bottom
+            v.co *= random.uniform(0.8, 1.15)
+            if v.co.z < 0:
+                v.co.z *= 0.4
+        c.scale = (random.uniform(0.9, 1.3), random.uniform(0.8, 1.1), random.uniform(0.6, 0.85))
+        c.rotation_euler.z = random.uniform(0, 3.14)
+        c.data.materials.append(chip); smooth(c); subsurf(c, 1)
     return g
 
 def make_cookies():
@@ -576,39 +625,44 @@ def make_bear(name, x, y, rot, col):
     return g
 
 def make_gummies():
-    gs = [make_bear("bear_red", 0.9, 0.25, 90, (1.0, 0.08, 0.05)),
+    gs = [make_bear("bear_red", -0.01, -0.5, 0, (1.0, 0.08, 0.05)),
           make_bear("bear_green", -1.0, 0.12, -10, (0.3, 0.9, 0.1)),
           make_bear("bear_yellow", 0.1, 0.0, 20, (1.0, 0.75, 0.0))]
     g = group("gummies", 0, 0)
     for c in gs:
         c.parent = g
-    add_food(g, [(0.9, 0.25, 0.2, 0.29, 90), (-1.0, 0.12, 0.2, 0.29, -10), (0.1, 0.0, 0.2, 0.29, 20)],
+    add_food(g, [(-0.01, -0.5, 0.2, 0.29, 0), (-1.0, 0.12, 0.2, 0.29, -10), (0.1, 0.0, 0.2, 0.29, 20)],
              (0.85, 0.1, 0.3), (1.0, 0.65, 0.1))
 
 # 0. Chocolate sauce swoosh (plated first, food sits on it) -----------------
 def make_sauce():
+    """Chocolate drizzled over the strawberries last, following whatever it lands on."""
     g = group("sauce", 0, 0)
-    choc = mat("chocolate", (0.16, 0.06, 0.025), rough=0.12, spec=0.6, coat=1.0)
-    wob = smooth_noise(3, 0.03)
+    choc = mat("chocolate", (0.16, 0.06, 0.025), rough=0.1, spec=0.6, coat=1.0)
+    bpy.context.view_layer.update()
+    dg = bpy.context.evaluated_depsgraph_get()
+    def surface(x, y):
+        hit, loc, *_ = scene.ray_cast(dg, Vector((x, y, 5)), Vector((0, 0, -1)))
+        return loc.z if hit else TOP
     cu = bpy.data.curves.new("sauce", "CURVE"); cu.dimensions = "3D"
-    cu.bevel_depth = 1.0; cu.bevel_resolution = 6; cu.use_fill_caps = True
-    sp = cu.splines.new("POLY"); n = 90; sp.points.add(n - 1)
+    cu.bevel_depth = 1.0; cu.bevel_resolution = 5; cu.use_fill_caps = True
+    n = 260; sp = cu.splines.new("POLY"); sp.points.add(n - 1)
+    wob = smooth_noise(4, 0.02)
     for i, pt in enumerate(sp.points):
-        t = i / (n - 1); a = math.radians(165 + 160 * t)
-        rr = 1.04 + wob(a * 3)
-        pt.co = (rr * math.cos(a), rr * math.sin(a), 0, 1)
-        pt.radius = 0.12 * math.sin(math.pi * (0.04 + 0.92 * t)) ** 0.6 * (1 + 0.15 * math.sin(9 * t))
+        t = i / (n - 1)
+        x = -0.38 + 0.9 * t + wob(t * 20) * 0.4
+        y = -0.88 + 0.1 * math.sin(t * math.pi * 15 + 0.5 * math.sin(t * 9)) * (0.8 + 0.3 * math.sin(t * 7)) + wob(t * 31 + 2) * 0.6
+        rad = 0.02 * (0.75 + 0.35 * math.sin(t * 57) ** 2) * min(1.0, t * 30, (1 - t) * 30 + 0.2)
+        pt.co = (x, y, surface(x, y) + rad * 0.55, 1); pt.radius = rad
     ob = bpy.data.objects.new("sauce", cu); link(ob, g); cu.materials.append(choc)
-    ob.scale.z = 0.22; ob.location.z = TOP + 0.002
-    drops = []
-    for (x, y, r) in [(1.0, -0.22, 0.05), (1.03, -0.07, 0.037)]:
-        d = sphere("drop", r, (x, y, TOP), (1, 1, 0.3), choc, g, 32, 16)
+    drops = []  # drips that ran off onto the plate
+    for (x, y, r) in [(0.62, -0.72, 0.035), (-0.47, -0.99, 0.03), (0.08, -1.08, 0.028), (0.66, -0.95, 0.025)]:
+        d = sphere("drop", r, (x, y, surface(x, y)), (1, 1, 0.35), choc, g, 32, 16)
         drops.append(d)
-    add_food(g, [(-0.95, -0.42, 0.22, 0.11, -65), (-0.5, -0.92, 0.22, 0.11, -30), (0.25, -1.02, 0.22, 0.11, 10), (0.85, -0.6, 0.2, 0.11, 55)],
-             (0.3, 0.15, 0.05), (0.45, 0.22, 0.1))
+    add_food(g, [(-0.16, -0.88, 0.3, 0.2, 0), (0.33, -0.86, 0.3, 0.2, 0)], (0.3, 0.15, 0.05), (0.45, 0.22, 0.1))
     foods[-1]["pour"] = (ob, drops)
 
-for maker in (make_sauce, make_donut, make_icecream, make_cookies, make_macarons, make_strawberries, make_gummies):
+for maker in (make_donut, make_icecream, make_cookies, make_macarons, make_strawberries, make_gummies, make_sauce):
     maker()
 
 # ---------------------------------------------------------------- crayon scribbles
@@ -694,10 +748,10 @@ for food in foods:
         ob, drops = food["pour"]
         cu = ob.data; cu.bevel_factor_mapping_end = "SPLINE"
         cu.bevel_factor_end = 0.0; cu.keyframe_insert("bevel_factor_end", frame=pop_f - 1)
-        cu.bevel_factor_end = 1.0; cu.keyframe_insert("bevel_factor_end", frame=pop_f + 9)
+        cu.bevel_factor_end = 1.0; cu.keyframe_insert("bevel_factor_end", frame=pop_f + 26)
         key_hide(ob, 0, True); key_hide(ob, pop_f - 1, False)
         for k, d in enumerate(drops):
-            f = pop_f + 9 + 2 * k
+            f = pop_f + 12 + 4 * k
             for fr, sc in [(f - 1, 0.0), (f, 0.5), (f + 2, 1.2), (f + 4, 1.0)]:
                 d.scale = (max(sc, 1e-4), max(sc, 1e-4), max(sc, 1e-4) * 0.3); d.keyframe_insert("scale", frame=fr)
     else:
