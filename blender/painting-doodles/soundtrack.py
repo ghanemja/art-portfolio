@@ -1,13 +1,18 @@
 """Soundtrack for a painting reel, built from the reel's events:
-crayon scratching while the doodle is drawn, a soft pop as the painting lands,
-a shimmer for the light sweep, tiny bells on the twinkles, a chime for the
-title, over a gentle kalimba-and-pad tune. Fixed gains, so the pop stays subtle.
+crayon scratching while the doodle is drawn, a soft bloop as each region floods
+with paint (rising in pitch), a shimmer as the crayon lines wash away, a gentle
+settle pop, a sweep shimmer, tiny bells on the twinkles and a chime for the
+title, over a kalimba-and-pad tune.
+
+The sound effects keep most of their energy between 500 Hz and 4 kHz so they
+come through phone speakers. master() makes the final mix loud enough to post:
+-14 LUFS integrated, true peak -1 dBTP, with a two-pass ffmpeg loudnorm.
 """
-import wave
+import json, re, subprocess, wave
 import numpy as np
 from scipy.signal import butter, sosfilt
 
-SR = 44100
+SR = 48000
 
 
 def _bandnoise(n, lo, hi, rng):
@@ -33,86 +38,117 @@ def _tone(f, dur, decay, harm=((1, 1.0),)):
 
 def _add(mix, y, at):
     a = int(at)
-    if a >= len(mix):
+    if a >= len(mix) or a < 0:
         return
     y = y[: len(mix) - a]
     mix[a:a + len(y)] += y
 
 
+def _bloop(f, rng, dur=0.2):
+    """Soft, round, water-drop pop: a quick upward glide with a couple of
+    harmonics so it still reads on a small speaker, plus a tiny wet tick."""
+    t = np.arange(int(dur * SR)) / SR
+    fr = f * (0.62 + 0.38 * (1 - np.exp(-t * 55)))
+    ph = 2 * np.pi * np.cumsum(fr) / SR
+    env = np.exp(-t * 20) * np.minimum(1, t * 900)
+    y = (np.sin(ph) + 0.45 * np.sin(2 * ph) + 0.18 * np.sin(3 * ph)) * env
+    tick = _bandnoise(len(t), 1500, 4000, rng) * np.exp(-t * 260)
+    return y + 0.25 * tick
+
+
 def make(ev, path, seed=0):
     rng = np.random.default_rng(seed)
     fps = ev["fps"]
-    n = int(SR * ev["frames"] / fps) + SR
+    n = int(SR * ev["frames"] / fps) + SR // 2
     at = lambda f: SR * f / fps
     mix = np.zeros(n)
+    hz = lambda m: 440 * 2 ** ((m - 69) / 12)
 
     # --- tune: kalimba plucks over a soft pad, in a key picked per reel
     roots = [60, 62, 65, 67, 57]
     root = roots[rng.integers(len(roots))]
-    scale = [0, 2, 4, 7, 9, 12, 14, 16]
+    scale = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24]
     chords = [[0, 4, 7], [-3, 0, 4], [-7, -3, 0], [-5, -1, 2]]
-    bpm = 92
-    beat = 60 / bpm
-    hz = lambda m: 440 * 2 ** ((m - 69) / 12)
+    beat = 60 / 92
     nbars = int(n / SR / (4 * beat)) + 1
     for b in range(nbars):
-        ch = chords[b % 4]
-        for c in ch:  # pad
+        for c in chords[b % 4]:  # pad
             dur = 4 * beat + 0.6
             t = np.arange(int(dur * SR)) / SR
             f = hz(root - 12 + c)
-            y = (np.sin(2 * np.pi * f * t) + 0.3 * np.sin(2 * np.pi * 2.003 * f * t)) * _env(len(t), 0.8, 0.8)
-            _add(mix, 0.018 * y, b * 4 * beat * SR)
+            y = (np.sin(2 * np.pi * f * t) + 0.35 * np.sin(2 * np.pi * 2.003 * f * t)
+                 + 0.15 * np.sin(2 * np.pi * 3.01 * f * t)) * _env(len(t), 0.8, 0.8)
+            _add(mix, 0.012 * y, b * 4 * beat * SR)
         for i in range(8):  # plucks on eighths, sparse
             if rng.random() < 0.45:
                 continue
-            m = root + 12 + scale[rng.integers(len(scale))]
-            y = _tone(hz(m), 0.9, 6, ((1, 1.0), (2.76, 0.18), (5.4, 0.06)))
-            _add(mix, 0.05 * y, (b * 4 + i * 0.5) * beat * SR)
+            m = root + 12 + scale[rng.integers(8)]
+            y = _tone(hz(m), 0.9, 6, ((1, 1.0), (2.76, 0.22), (5.4, 0.08)))
+            _add(mix, 0.035 * y, (b * 4 + i * 0.5) * beat * SR)
 
     # --- crayon scratching while drawing: strokes at ~6-9 per second
     d0, d1 = ev["draw"]
     a, b = int(at(d0)), int(at(d1))
     L = b - a
-    scratch = _bandnoise(L, 1400, 7000, rng) + 0.5 * _bandnoise(L, 400, 1400, rng)
+    scratch = _bandnoise(L, 1200, 5500, rng) + 0.6 * _bandnoise(L, 500, 1200, rng)
     t = np.arange(L) / SR
     rate = 7.5 + 1.5 * np.sin(2 * np.pi * 0.3 * t)
-    phase = 2 * np.pi * np.cumsum(rate) / SR
-    strokes = (0.5 + 0.5 * np.sin(phase)) ** 1.5
+    strokes = (0.5 + 0.5 * np.sin(2 * np.pi * np.cumsum(rate) / SR)) ** 1.5
     grit = 0.7 + 0.3 * (rng.random(L) > 0.5)
-    _add(mix, 0.07 * scratch * strokes * grit * _env(L, 0.05, 0.15), a)
+    _add(mix, 0.09 * scratch * strokes * grit * _env(L, 0.05, 0.15), a)
 
-    # --- the pop: a soft, low bloop with a tiny click
-    p = at(ev["pop"])
-    t = np.arange(int(0.16 * SR)) / SR
-    f = 190 + 330 * (1 - np.exp(-t * 40))
-    bloop = np.sin(2 * np.pi * np.cumsum(f) / SR) * np.exp(-t * 26) * np.minimum(1, t * 600)
-    click = _bandnoise(len(t), 2000, 6000, rng) * np.exp(-t * 300)
-    _add(mix, 0.16 * bloop + 0.02 * click, p - 0.006 * SR)
-    # a little rising sparkle right after
-    for i, m in enumerate([root + 24, root + 28, root + 31]):
-        _add(mix, 0.022 * _tone(hz(m), 0.8, 7), p + (0.05 + 0.06 * i) * SR)
+    # --- a bloop for every region that floods with paint, climbing the scale
+    for i, f in enumerate(ev["blooms"]):
+        m = root + 12 + scale[min(i, len(scale) - 1)]
+        _add(mix, 0.10 * _bloop(hz(m), rng), at(f))
+
+    # --- the crayon lines wash away: a soft watery shimmer
+    wa = at(ev["wash"])
+    L = int(0.8 * SR)
+    sh = _bandnoise(L, 2500, 7000, rng) * np.sin(np.linspace(0, np.pi, L)) ** 2
+    _add(mix, 0.05 * sh, wa)
+    for i, m in enumerate([root + 24, root + 28, root + 31, root + 36]):
+        _add(mix, 0.025 * _tone(hz(m), 0.7, 7), wa + 0.07 * i * SR)
+
+    # --- settle: one gentle, slightly lower pop as the painting lands
+    _add(mix, 0.09 * _bloop(hz(root + 7), rng, 0.25), at(ev["done"]))
 
     # --- light sweep shimmer
     s = at(ev["sweep"])
     L = int(1.2 * SR)
-    sh = _bandnoise(L, 5000, 11000, rng) * np.sin(np.linspace(0, np.pi, L)) ** 2
-    _add(mix, 0.025 * sh, s)
+    sh = _bandnoise(L, 3000, 9000, rng) * np.sin(np.linspace(0, np.pi, L)) ** 2
+    _add(mix, 0.03 * sh, s)
 
     # --- twinkles: tiny high bells
     for tw in ev.get("twinkles", []):
-        m = root + 36 + scale[rng.integers(5)]
-        _add(mix, 0.012 * _tone(hz(m), 0.6, 9), at(tw))
+        m = root + 31 + scale[rng.integers(5)]
+        _add(mix, 0.014 * _tone(hz(m), 0.6, 9), at(tw))
 
     # --- title chime
     ti = at(ev["title"])
     for i, m in enumerate([root + 12, root + 19, root + 24]):
-        _add(mix, 0.04 * _tone(hz(m), 1.6, 3, ((1, 1.0), (2, 0.2))), ti + 0.12 * i * SR)
+        _add(mix, 0.045 * _tone(hz(m), 1.6, 3, ((1, 1.0), (2, 0.3), (3, 0.1))), ti + 0.12 * i * SR)
 
-    mix = np.tanh(mix * 1.6) / np.tanh(1.6)
+    mix = np.tanh(mix * 2.0) / np.tanh(2.0)
     fade = int(0.5 * SR)
     mix[-fade:] *= np.linspace(1, 0, fade)
-    st = np.stack([mix, mix], 1)
+    mix /= np.abs(mix).max() + 1e-9
+    st = np.stack([mix, mix], 1) * 0.7
     with wave.open(path, "wb") as w:
         w.setnchannels(2); w.setsampwidth(2); w.setframerate(SR)
-        w.writeframes((np.clip(st, -1, 1) * 32767 * 0.9).astype(np.int16).tobytes())
+        w.writeframes((st * 32767).astype(np.int16).tobytes())
+
+
+def master(src, dst, target=-14.0, tp=-1.5, lra=11):
+    """Two-pass ffmpeg loudnorm: measure, then normalise linearly to `target` LUFS.
+    True-peak target sits a little under -1 dBTP so AAC encoding stays below -1."""
+    p = subprocess.run(["ffmpeg", "-hide_banner", "-i", src, "-af",
+                        f"loudnorm=I={target}:TP={tp}:LRA={lra}:print_format=json", "-f", "null", "-"],
+                       capture_output=True, text=True)
+    m = json.loads(re.findall(r"\{[^{}]*\}", p.stderr)[-1])
+    af = (f"loudnorm=I={target}:TP={tp}:LRA={lra}:measured_I={m['input_i']}:measured_TP={m['input_tp']}"
+          f":measured_LRA={m['input_lra']}:measured_thresh={m['input_thresh']}:offset={m['target_offset']}"
+          f":linear=true:print_format=summary")
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", src, "-af", af, "-ar", str(SR), "-ac", "2", dst],
+                   check=True)
+    return dst

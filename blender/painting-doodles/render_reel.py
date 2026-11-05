@@ -118,23 +118,24 @@ def make_doodle(paint, box, oval, rng, k=1.0):
     # big shapes first (sky, sea), then the smaller things that sit on them
     regions.sort(key=lambda r: -r["area"])
 
-    to_page = lambda p: np.stack([x0 + p[:, 0] * s, y0 + p[:, 1] * s], 1)
+    sx, sy = w / sw, h / shh   # exact registration: small grid -> the painting's box
+    to_page = lambda p: np.stack([x0 + (p[:, 0] + 0.5) * sx, y0 + (p[:, 1] + 0.5) * sy], 1)
     strokes = []
 
     # the canvas edge, scribbled first
     if oval:
         a = np.linspace(0, 2 * np.pi * 1.08, 220) + rng.uniform(0, 6)
-        pts = np.stack([x0 + w / 2 + w / 2 * np.cos(a), y0 + h / 2 + h / 2 * np.sin(a)], 1)
+        pts = np.stack([x0 + w / 2 + w * 0.485 * np.cos(a), y0 + h / 2 + h * 0.485 * np.sin(a)], 1)
     else:
         c = [(x0, y0), (x0 + w, y0), (x0 + w, y0 + h), (x0, y0 + h), (x0, y0), (x0 + w * 0.15, y0)]
         pts = resample(c, 6)
     pts = resample(pts, 5)
     n = len(pts)
-    pts = pts + np.stack([smooth_noise_1d(n, rng, 10 * k), smooth_noise_1d(n, rng, 10 * k)], 1)
-    strokes.append(dict(pts=pts, col=(70, 60, 55), width=7, kind="edge"))
+    pts = pts + np.stack([smooth_noise_1d(n, rng, 4 * k), smooth_noise_1d(n, rng, 4 * k)], 1)
+    strokes.append(dict(pts=pts, col=(70, 60, 55), width=7, kind="edge", rid=-1))
 
     spacing = 23.0 * k / s
-    for r in regions:
+    for rid, r in enumerate(regions):
         m = r["mask"]
         fill = crayon_colour(r["col"])
         line = crayon_colour(r["col"], darker=True)
@@ -177,10 +178,10 @@ def make_doodle(paint, box, oval, rng, k=1.0):
                     new_open.append([pa, pb])
             for st in open_strokes:  # finished
                 if len(st) >= 2:
-                    strokes.append(dict(pts=to_page(np.array(st)), col=fill, width=10, kind="hatch"))
+                    strokes.append(dict(pts=to_page(np.array(st)), col=fill, width=10, kind="hatch", rid=rid))
             open_strokes = new_open
         for st in open_strokes:
-            strokes.append(dict(pts=to_page(np.array(st)), col=fill, width=10, kind="hatch"))
+            strokes.append(dict(pts=to_page(np.array(st)), col=fill, width=10, kind="hatch", rid=rid))
         # outline
         cs, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
         for c in cs:
@@ -190,19 +191,19 @@ def make_doodle(paint, box, oval, rng, k=1.0):
             c = np.concatenate([c, c[:2]])
             pg = resample(to_page(c), 5)
             n = len(pg)
-            pg = pg + np.stack([smooth_noise_1d(n, rng, 7 * k), smooth_noise_1d(n, rng, 7 * k)], 1)
-            strokes.append(dict(pts=pg, col=line, width=6, kind="outline"))
+            pg = pg + np.stack([smooth_noise_1d(n, rng, 4 * k), smooth_noise_1d(n, rng, 4 * k)], 1)
+            strokes.append(dict(pts=pg, col=line, width=6, kind="outline", rid=rid))
 
     # jitter hatching a little so it looks hand made
     for st in strokes:
         if st["kind"] == "hatch":
             st["pts"] = resample(st["pts"], 6)
             st["pts"] = st["pts"] + rng.normal(0, 2.2 * k, st["pts"].shape)
-    return strokes
+    return strokes, [r["mask"] for r in regions]
 
 
 # ------------------------------------------------------------------ the reel
-def build(name, res, out_dir, still=None, artist=None, works=None, seed=None):
+def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sheet_frames=None):
     W, H = res, int(round(res * 16 / 9))
     k = W / 1080.0
     work = works[name]
@@ -214,16 +215,10 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None):
     maxw, maxh = 900 * k, 1060 * k
     sc = min(maxw / iw, maxh / ih)
     w, h = int(iw * sc), int(ih * sc)
-    cx, cy = W / 2, 860 * k
-    x0, y0 = int(cx - w / 2), int(cy - h / 2)
+    x0, y0 = int(W / 2 - w / 2), int(860 * k - h / 2)
+    cx, cy = x0 + w / 2, y0 + h / 2
     paint = cv2.resize(src, (w, h), interpolation=cv2.INTER_AREA)
-
-    # timeline (frames)
-    T_DRAW0, T_DRAW1 = 10, 130
-    T_POP = 138
-    T_SWEEP = T_POP + 40
-    T_TITLE = T_POP + 100
-    N = T_TITLE + 95
+    paint_f = paint.astype(np.float32)
 
     # ---------------- paper
     mean_col = paint.reshape(-1, 3).mean(0)
@@ -239,8 +234,8 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None):
     tooth = np.clip((tooth + 0.9) / 1.3, 0.0, 1.0) ** 0.8
     tooth = 0.25 + 0.75 * tooth
 
-    # ---------------- doodle strokes
-    strokes = make_doodle(paint, (x0, y0, w, h), oval, rng, k)
+    # ---------------- doodle strokes, registered to the painting's box
+    strokes, rmasks = make_doodle(paint, (x0, y0, w, h), oval, rng, k)
     for st in strokes:
         st["pts"] = st["pts"].astype(np.float32)
         seg = np.linalg.norm(np.diff(st["pts"], axis=0), axis=1)
@@ -250,6 +245,23 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None):
     starts = np.cumsum([0] + [st["len"] for st in strokes[:-1]])
     for st, a in zip(strokes, starts):
         st["start"] = a
+
+    # ---------------- timeline (frames)
+    nreg = max(1, len(rmasks))
+    NW = min(nreg, 12)                       # flood waves; regions grouped in drawing order
+    wave_of = [i * NW // nreg for i in range(nreg)]
+    STAG, FDUR = 4, 22                       # 0.13 s apart, each floods over ~0.5 s
+    T_DRAW0, T_DRAW1 = 10, 130
+    T_FLOOD = 136
+    wave_start = [T_FLOOD + i * STAG for i in range(NW)]
+    T_GLOBAL = wave_start[-1] + 8            # last gaps fill in
+    GDUR = 14
+    T_WASH = T_GLOBAL + 6                    # crayon outlines wash away
+    WDUR = 16
+    T_DONE = T_GLOBAL + GDUR                 # painting complete: settle bounce
+    T_SWEEP = T_DONE + 4
+    T_TITLE = T_DONE + 70
+    N = T_TITLE + 90
 
     def pen_at(f):
         t = (f - T_DRAW0) / (T_DRAW1 - T_DRAW0)
@@ -268,6 +280,67 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None):
     rgba[..., :3] = cv2.copyMakeBorder(paint, pad, pad, pad, pad, cv2.BORDER_REPLICATE)
     rgba[pad:pad + h, pad:pad + w, 3] = alpha
     shadow = cv2.GaussianBlur(rgba[..., 3], (0, 0), 14 * k)
+
+    # ---------------- the flood: paint bleeds out from each region's crayon lines
+    def raster(sts, width_mul=1.0):
+        m = np.zeros((h, w), np.uint8)
+        for st in sts:
+            p = np.round((st["pts"] - [x0, y0]) * 4).astype(np.int32).reshape(-1, 1, 2)
+            cv2.polylines(m, [p], False, 255, max(1, int(st["width"] * k * width_mul)), cv2.LINE_AA, shift=2)
+        return m
+
+    rough = cv2.GaussianBlur(rng.normal(0, 1, (h, w)).astype(np.float32), (0, 0), 3 * k)
+    rough = rough / (rough.std() + 1e-6) * 4 * k
+    feather = 3.5 * k
+    waves = []
+    for wi in range(NW):
+        rids = [r for r in range(nreg) if wave_of[r] == wi]
+        hm = raster([st for st in strokes if st["kind"] == "hatch" and st["rid"] in rids])
+        reg = np.zeros((h, w), np.float32)
+        for r in rids:
+            reg = np.maximum(reg, cv2.resize(rmasks[r].astype(np.float32), (w, h), interpolation=cv2.INTER_LINEAR))
+        reg = (reg > 0.5).astype(np.uint8)
+        reg = cv2.dilate(reg, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (int(9 * k) | 1, int(9 * k) | 1)))
+        soft = cv2.GaussianBlur(reg.astype(np.float32), (0, 0), 3 * k) * alpha
+        if hm.max() == 0:
+            hm = (reg * 255).astype(np.uint8)
+        dist = cv2.distanceTransform((hm < 128).astype(np.uint8), cv2.DIST_L2, 5)
+        inside = soft > 0.5
+        dmax = float(np.percentile(dist[inside], 99.5)) if inside.any() else 20 * k
+        ys_, xs_ = np.nonzero(soft > 0.01)
+        bb = (ys_.min(), ys_.max() + 1, xs_.min(), xs_.max() + 1) if len(ys_) else (0, 1, 0, 1)
+        waves.append(dict(start=wave_start[wi], dist=dist, soft=soft, dmax=dmax + 12 * k, bb=bb))
+    all_lines = raster(strokes)
+    dist_all = cv2.distanceTransform((all_lines < 128).astype(np.uint8), cv2.DIST_L2, 5)
+    dmax_all = float(dist_all[alpha > 0.5].max()) + 12 * k
+
+    def flood_alpha(f):
+        """How much real paint has soaked in, per pixel of the painting, at frame f."""
+        A = np.zeros((h, w), np.float32)
+        for wv in waves:
+            t = (f - wv["start"]) / FDUR
+            if t <= 0:
+                continue
+            y_0, y_1, x_0, x_1 = wv["bb"]
+            if t >= 1:
+                sub = wv["soft"][y_0:y_1, x_0:x_1]
+            else:
+                r = ease(t) ** 0.8 * wv["dmax"]
+                sub = np.clip((r - wv["dist"][y_0:y_1, x_0:x_1] - rough[y_0:y_1, x_0:x_1]) / feather, 0, 1)
+                sub = sub * wv["soft"][y_0:y_1, x_0:x_1]
+            np.maximum(A[y_0:y_1, x_0:x_1], sub, out=A[y_0:y_1, x_0:x_1])
+        tg = (f - T_GLOBAL) / GDUR
+        if tg > 0:
+            if tg >= 1:
+                A[:] = alpha
+            else:
+                r = ease(tg) * dmax_all
+                np.maximum(A, np.clip((r - dist_all - rough) / feather, 0, 1) * alpha, out=A)
+        return A
+
+    # outlines dissolve with a wet shimmer
+    wash_noise = cv2.GaussianBlur(rng.random((H, W)).astype(np.float32), (0, 0), 7 * k)
+    wash_noise = (wash_noise - wash_noise.min()) / (wash_noise.max() - wash_noise.min() + 1e-6)
 
     # fake depth for the parallax: sky/top far, foreground near, detail a touch nearer
     gray = cv2.cvtColor(paint, cv2.COLOR_RGB2GRAY).astype(np.float32) / 255
@@ -290,24 +363,16 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None):
     order = rng.permutation(len(pys))[:18]
     twinkles = [(pxs[i], pys[i], rng.uniform(0, 1), rng.uniform(0.7, 1.3)) for i in order]
 
-    # pop burst confetti, in the doodle's brightest crayons
-    fills = [st["col"] for st in strokes if st["kind"] == "hatch"]
-    bright = sorted(set(fills), key=lambda c: -(max(c) - min(c)))[:5] or [(240, 120, 120)]
-    bright = [crayon_colour(c) for c in bright]
-    burst = []
-    for i in range(16):
-        a = rng.uniform(0, 2 * np.pi)
-        burst.append((a, rng.uniform(0.8, 1.3), rng.uniform(7, 13) * k, None))
-
     # ---------------- title card
     title_img = render_title(W, H, k, work["title"], artist, y_top=y0 + h + 95 * k, ink=(66, 56, 52))
 
     # ---------------- sound events
-    events = dict(fps=FPS, frames=N, draw=[T_DRAW0, T_DRAW1], pop=T_POP, sweep=T_SWEEP,
-                  title=T_TITLE, twinkles=[])
+    events = dict(fps=FPS, frames=N, draw=[T_DRAW0, T_DRAW1], blooms=[ws + 2 for ws in wave_start],
+                  wash=T_WASH, done=T_DONE, sweep=T_SWEEP, title=T_TITLE, twinkles=[])
 
-    ink = np.zeros((H, W, 3), np.float32)
-    ink_a = np.zeros((H, W), np.float32)
+    # two crayon layers: hatching sits under the paint, outlines on top until they wash away
+    ink_h = np.zeros((H, W, 3), np.float32); ink_ha = np.zeros((H, W), np.float32)
+    ink_o = np.zeros((H, W, 3), np.float32); ink_oa = np.zeros((H, W), np.float32)
     drawn_upto = 0.0
 
     def draw_ink(L0, L1):
@@ -337,6 +402,7 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None):
             m = np.zeros((by1 - by0, bx1 - bx0), np.uint8)
             cv2.polylines(m, [p], False, 255, wdt, cv2.LINE_AA, shift=2)
             mf = (m.astype(np.float32) / 255)[..., None]
+            ink, ink_a = (ink_h, ink_ha) if st["kind"] == "hatch" else (ink_o, ink_oa)
             sub = ink[by0:by1, bx0:bx1]
             ao = ink_a[by0:by1, bx0:bx1][..., None]
             an = ao * (1 - mf) + mf
@@ -356,7 +422,8 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None):
         return cv2.warpAffine(img4, M, (dst_shape[1], dst_shape[0]), flags=cv2.INTER_LINEAR,
                               borderMode=cv2.BORDER_CONSTANT, borderValue=0)
 
-    frames_to_do = [still] if still is not None else range(N)
+    shadow_still = place(shadow, 1.02, cx + 4 * k, cy + 16 * k, (H, W))
+
     proc = None
     if still is None:
         os.makedirs(out_dir, exist_ok=True)
@@ -369,6 +436,8 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None):
     water_p = np.pad(water, pad)
     lum_p = np.pad(lum, pad)
 
+    if sheet_frames is None:
+        sheet_frames = [T_DRAW0 + 70, T_FLOOD + NW * STAG // 2 + 4, T_WASH + 7, T_DONE + 45, N - 2]
     out_frames = []
     for f in (range(N) if still is None else range(still + 1)):
         # doodle grows
@@ -380,68 +449,60 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None):
             continue
 
         frame = paper.copy()
-        # doodle layer (fades as the painting lands)
-        dfade = 1.0 if f < T_POP else max(0.0, 1 - (f - T_POP) / 6)
-        if dfade > 0:
-            a = (ink_a * tooth * dfade)[..., None]
-            frame = frame * (1 - a) + ink * a
 
-        if f >= T_POP - 1:
-            tp = f - T_POP
-            keys = [(-1, 0.0), (0, 0.45), (4, 1.10), (8, 0.965), (12, 1.015), (16, 1.0)]
-            if tp >= 16:
-                s_pop = 1.0
-            else:
-                s_pop = float(np.interp(tp, [a for a, _ in keys], [b for _, b in keys]))
-            # slow push in + drift after the pop
-            ta = max(0.0, (f - T_POP - 14) / (N - T_POP - 14))
+        if f < T_DONE:
+            # ---- doodle, then paint soaking in through it
+            prog = min(1.0, max(0.0, (f - T_FLOOD) / (T_DONE - T_FLOOD)))
+            if prog > 0:
+                frame *= (1 - 0.32 * shadow_still * ease(prog))[..., None]
+            a = (ink_ha * tooth)[..., None]
+            frame = frame * (1 - a) + ink_h * a
+            if f >= T_FLOOD:
+                A = flood_alpha(f)
+                wet = 4 * A * (1 - A)                       # the soaking edge looks wet and bright
+                pr = paint_f + (wet * 38)[..., None]
+                sub = frame[y0:y0 + h, x0:x0 + w]
+                frame[y0:y0 + h, x0:x0 + w] = sub * (1 - A[..., None]) + pr * A[..., None]
+            # outlines on top, washing away with a shimmer
+            tw = (f - T_WASH) / WDUR
+            keep = np.clip((wash_noise - (tw * 1.3 - 0.15)) / 0.15, 0, 1) if tw > 0 else 1.0
+            a = (ink_oa * tooth * keep)[..., None]
+            frame = frame * (1 - a) + ink_o * a
+            if 0 < tw < 1.2:
+                edge = 4 * keep * (1 - keep) * (ink_oa > 0.05)
+                frame += edge[..., None] * np.array([60, 55, 40], np.float32)
+        else:
+            # ---- the finished painting: settle bounce, then push-in, parallax, sweep, twinkles
+            tp = f - T_DONE
+            s_set = float(np.interp(tp, [0, 5, 14], [1.0, 1.025, 1.0]))
+            ta = max(0.0, (f - T_DONE - 14) / (N - T_DONE - 14))
             s_push = 1 + 0.07 * ease(ta)
-            tt = (f - T_POP) / FPS
+            tt = (f - T_DONE) / FPS
             camx = math.sin(tt * 2 * math.pi / 7.0) * ease(min(1, ta * 3))
             camy = math.sin(tt * 2 * math.pi / 9.0 + 1.0) * ease(min(1, ta * 3))
-            img = rgba
-            if tp > 10:
-                amp = 13 * k
-                dx = (depth_p - 0.5) * amp * camx
-                dy = (depth_p - 0.5) * amp * 0.6 * camy
-                sh = water_p * 1.6 * k * np.sin(iy * 0.09 / k - tt * 3.2 + ix * 0.012)
-                mapx = (ix - dx).astype(np.float32)
-                mapy = (iy - dy + sh).astype(np.float32)
-                img = cv2.remap(rgba, mapx, mapy, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
-                img[..., 3] = rgba[..., 3]
-                # light sweep across the varnish
-                ts = (f - T_SWEEP) / 40.0
-                if 0 <= ts <= 1:
-                    band_pos = -0.3 + 1.6 * ts
-                    u = (ix / (w + 2 * pad)) * 0.8 + (iy / (h + 2 * pad)) * 0.4
-                    band = np.exp(-((u - band_pos) / 0.11) ** 2)
-                    img = img.copy()
-                    img[..., :3] += (band * (40 + 60 * lum_p))[..., None]
-            s = s_pop * s_push
+            amp = 13 * k
+            dx = (depth_p - 0.5) * amp * camx
+            dy = (depth_p - 0.5) * amp * 0.6 * camy
+            sh = water_p * 1.6 * k * np.sin(iy * 0.09 / k - tt * 3.2 + ix * 0.012) * ease(min(1, tp / 20))
+            img = cv2.remap(rgba, (ix - dx).astype(np.float32), (iy - dy + sh).astype(np.float32),
+                            cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+            img[..., 3] = rgba[..., 3]
+            ts = (f - T_SWEEP) / 40.0
+            if 0 <= ts <= 1:
+                band_pos = -0.3 + 1.6 * ts
+                u = (ix / (w + 2 * pad)) * 0.8 + (iy / (h + 2 * pad)) * 0.4
+                band = np.exp(-((u - band_pos) / 0.11) ** 2)
+                img[..., :3] += (band * (40 + 60 * lum_p))[..., None]
+            s = s_set * s_push
             ox = cx + 6 * k * camx
             oy = cy + 4 * k * camy
             sh_layer = place(shadow, s * 1.02, ox + 4 * k, oy + 16 * k * s, (H, W))
             frame *= (1 - 0.32 * sh_layer)[..., None]
             lay = place(img, s, ox, oy, (H, W))
             a = np.clip(lay[..., 3:4], 0, 1)
-            # rgb is premultiplied by the warp's border (0), so un-premultiply via a separate warp of rgb
             frame = frame * (1 - a) + np.clip(place_rgb(img, s, ox, oy, (H, W)), 0, 255) * a
 
-            # confetti dots of crayon colour flying out at the pop
-            if 0 <= tp < 22:
-                for (ang, sp, rad, si) in burst:
-                    r0 = 0.5 * max(w, h) * 0.75
-                    dist = r0 + sp * 260 * k * (1 - (1 - tp / 22) ** 2)
-                    px = cx + math.cos(ang) * dist * (w / max(w, h) + 0.2)
-                    py = cy + math.sin(ang) * dist * (h / max(w, h) + 0.2)
-                    al = 1 - tp / 22
-                    col = bright[int(ang * 100) % len(bright)]
-                    ov = frame.copy()
-                    cv2.circle(ov, (int(px), int(py)), int(rad), col, -1, cv2.LINE_AA)
-                    frame = frame * (1 - al) + ov * al
-
-            # twinkles
-            if tp > 30:
+            if tp > 20:
                 for (tx, ty, ph, spd) in twinkles:
                     v = math.sin(2 * math.pi * (tt * 0.45 * spd + ph))
                     if v < 0.75:
@@ -469,15 +530,17 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None):
                                      "-c:v", "libx264", "-preset", "medium", "-crf", "21", "-pix_fmt", "yuv420p",
                                      os.path.join(out_dir, f".{name}.video.mp4")], stdin=subprocess.PIPE)
         proc.stdin.write(out.tobytes())
-        if f in (T_DRAW0 + 60, T_POP + 2, T_POP + 70, N - 2):
+        if f in sheet_frames:
             out_frames.append(out)
     proc.stdin.close(); proc.wait()
 
     soundtrack.make(events, wav, seed=int(rng.integers(1 << 30)))
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", os.path.join(out_dir, f".{name}.video.mp4"), "-i", wav,
-                    "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-shortest", "-movflags", "+faststart", mp4],
-                   check=True)
-    os.remove(os.path.join(out_dir, f".{name}.video.mp4")); os.remove(wav)
+    mastered = soundtrack.master(wav, os.path.join(out_dir, f".{name}.master.wav"))
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", os.path.join(out_dir, f".{name}.video.mp4"), "-i", mastered,
+                    "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2",
+                    "-shortest", "-movflags", "+faststart", mp4], check=True)
+    for p in (os.path.join(out_dir, f".{name}.video.mp4"), wav, mastered):
+        os.remove(p)
     with open(os.path.join(out_dir, f".{name}.events.json"), "w") as fh:
         json.dump(events, fh)
     return out_frames
