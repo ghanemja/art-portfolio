@@ -317,6 +317,13 @@ class Animator:
             cut = np.maximum(m.astype(np.float32), legs)
             cut = cv2.GaussianBlur(cut, (0, 0), 0.8 * k)
             hz["cut"] = np.pad(cut, pad)
+            # its colours, for when it turns into an animated horse
+            body = (m > 0) & (poly(hs.get("hair", [])) == 0)
+            hz["coat"] = np.median(paint[body].reshape(-1, 3), 0) if body.any() else paint[m > 0].mean(0)
+            hm = (poly(hs.get("hair", [])) > 0) & (m > 0)
+            hz["hair_col"] = paint[hm].mean(0) * 0.85 if hm.sum() > 20 else hz["coat"] * 0.5
+            rows = np.nonzero(cut.max(1) > 0.05)[0]
+            hz["cut_h"] = float(rows.max() - rows.min())
             # its hole: the horse, its legs, and its reflection below the waterline
             lb = int(max(p[1] for p in hs["legs"]) * h)
             refl = np.zeros((h, w), np.uint8)
@@ -374,7 +381,34 @@ class Animator:
                 out[..., :3] = out[..., :3] * (1 - a) + self.bg * a
         return out
 
+    CHARGE, MIX = 0.4, 0.3      # it charges out as its painted self, then turns into an animated horse
+
+    def facing(self, hi):
+        return 1 if self.horses[hi]["lmid"] >= self.pad + self.vp[0] * self.w + 0.02 * self.w else -1
+
+    def rig_length(self, hi):
+        """The animated horse's body length (painting px), matching the painted one's size."""
+        dx, dy, sc = self._charge(hi, self.CHARGE)
+        return self.horses[hi]["cut_h"] * sc / 1.3
+
     def out_path(self, hi, tau):
+        """Where a departed horse is, tau seconds after it set off: (dx, dy, scale) in painting pixels,
+        about its hooves. It charges out of the painting at us, then, as an animated horse, gallops
+        off to its own side of the screen."""
+        if tau <= self.CHARGE:
+            return self._charge(hi, tau)
+        dx, dy, sc = self._charge(hi, self.CHARGE)
+        u = tau - self.CHARGE
+        v = 4.9 * self.rig_length(hi)                        # the gallop's own ground speed
+        ease = 0.3
+        run = v * (u * u / (2 * ease) if u < ease else u - ease / 2)
+        return dx + self.facing(hi) * run, dy + 70 * self.k * u, sc
+
+    def mix(self, tau):
+        """0: the painted horse, 1: the animated one."""
+        return float(np.clip((tau - self.CHARGE + 0.05) / self.MIX, 0, 1))
+
+    def _charge(self, hi, tau):
         """Where a departed horse is, tau seconds after it set off: (dx, dy, scale) in painting
         pixels, about its hooves. It charges straight at us: in perspective it grows faster and
         faster and sweeps outwards from the vanishing point behind the herd, off the screen."""
@@ -385,11 +419,6 @@ class Animator:
         sgn = 1 if hz["lmid"] >= vx + 0.02 * self.w else -1
         veer = (sgn * (30 * tau + 90 * tau * tau) + self.run_out[0] * 40 * tau) * self.k * sc ** 0.5
         return (hz["lmid"] - vx) * (sc - 1) + veer, (hz["lbot"] - vy) * (sc - 1), sc
-
-    @staticmethod
-    def passing(sc):
-        """A charging horse fades as it passes us (alpha 1 until it is 3.5 times its size, gone by 6)."""
-        return float(np.clip((6.0 - sc) / 2.5, 0, 1))
 
     def sprites(self, rgba, t):
         """Each horse that has broken out: its galloping pixels (taken through the same warp as the
@@ -410,9 +439,8 @@ class Animator:
             a = cv2.remap(hz["cut"], sx, sy, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
             tau = t - self.leave[hi]
             dx, dy, s = self.out_path(hi, tau)
-            if self.passing(s) <= 0:
-                continue
-            out.append(dict(fade=self.passing(s), hi=hi, rgb=rgb, a=a, x0=x0, y0=y0, ax=hz["lmid"], ay=hz["lbot"], dx=dx, dy=dy, s=s,
+            out.append(dict(fade=1.0, mix=self.mix(tau), facing=self.facing(hi),
+                            phase=(0.15 + hi * 0.37 + 2.2 * max(0.0, tau - self.CHARGE)) % 1.0, hi=hi, rgb=rgb, a=a, x0=x0, y0=y0, ax=hz["lmid"], ay=hz["lbot"], dx=dx, dy=dy, s=s,
                             tau=tau))
         out.sort(key=lambda d: d["s"])                       # nearer (bigger) ones on top
         return out

@@ -24,6 +24,7 @@ import soundtrack  # noqa: E402
 import animate  # noqa: E402
 import unwrap  # noqa: E402
 import spill  # noqa: E402
+import horse_rig  # noqa: E402
 
 FPS = 30
 
@@ -374,17 +375,31 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
         if sp["kind"] == "pour":
             pour = spill.Pour(W, H, k, (x0, y0, w, h), paint, sp["pours"])
 
-    def exit_tau(hi):
-        """How long after it sets off a breaking-out horse is wholly below the screen."""
+    rigs = {}
+    dn = cv2.GaussianBlur(rng.random((H, W)).astype(np.float32), (0, 0), 5 * k)
+    dn += 0.35 * cv2.GaussianBlur(rng.random((H, W)).astype(np.float32), (0, 0), 1.2 * k)
+    dissolve_n = (dn - dn.min()) / (dn.max() - dn.min() + 1e-6)
+
+    def rig_for(hi):
+        if hi not in rigs:
+            hz = anim.horses[hi]
+            rigs[hi] = horse_rig.HorseRig(hz["coat"], hz["hair_col"], anim.rig_length(hi),
+                                          np.random.default_rng(50 + hi))
+        return rigs[hi]
+
+    def anchor(hi, tau):
+        """Screen position of a breaking-out horse's hooves, and its scale."""
         hz = anim.horses[hi]
-        top = np.nonzero(hz["cut"].max(1) > 0.05)[0].min()
+        dx, dy, sc = anim.out_path(hi, tau)
+        return cx + (hz["lmid"] - pad - w / 2) + dx, cy + (hz["lbot"] - pad - h / 2) + dy, sc
+
+    def exit_tau(hi):
+        """How long after it sets off a horse has galloped right off the screen."""
+        half = 1.2 * anim.rig_length(hi)
         tau = 0.0
-        while tau < 6:
-            dx, dy, sc = anim.out_path(hi, tau)
-            ys_ = cy + (hz["lbot"] - pad - h / 2) + dy + (top - hz["lbot"]) * sc
-            xs_ = cx + (hz["lmid"] - pad - w / 2) + dx
-            half = (hz["cut"].max(0) > 0.05).sum() / 2 * sc
-            if ys_ > H + 10 * k or xs_ - half > W or xs_ + half < 0 or anim.passing(sc) <= 0:
+        while tau < 8:
+            x, y, sc = anchor(hi, tau)
+            if x - half > W or x + half < 0 or y - 2 * half > H:
                 return tau
             tau += 0.02
         return tau
@@ -408,16 +423,27 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
             dur = (N - T_ANIM) / FPS
             events["hooves"] = [[t_anim + tl, (x - pad) / w * 2 - 1, min(1.0, tl / 0.6), hi, 1.0, 1.0]
                                 for (tl, x, y, hi, side) in anim.hoof_events(0.0, dur)]
-            # the horses that break out keep galloping, louder as they come at us, until they are gone
+            # the horses that break out: louder as they charge at us, then, as animated horses,
+            # a dry four-beat gallop moving across the stereo field until they are gone
             for (tl, x, y, hi, side) in anim.hoof_events(0.0, dur, include_gone=True):
                 if hi not in anim.leave or tl <= anim.leave[hi]:
                     continue
                 tau = tl - anim.leave[hi]
-                if tau > exit_tau(hi):
+                if tau > anim.CHARGE + 0.05:
                     continue
-                dx, dy, sc = anim.out_path(hi, tau)
-                xs = cx + (x - pad - w / 2) + dx
-                events["hooves"].append([t_anim + tl, xs / W * 2 - 1, 1.0, hi, max(0.0, 1 - tau / 0.35), sc])
+                ax_, ay_, sc = anchor(hi, tau)
+                events["hooves"].append([t_anim + tl, ax_ / W * 2 - 1, 1.0, hi, max(0.0, 1 - tau / 0.35), sc])
+            for hi in anim.leave:
+                p0 = 0.15 + hi * 0.37
+                te = exit_tau(hi)
+                for n_ in range(40):
+                    for off in horse_rig.HorseRig.FOOTFALLS:
+                        tau = anim.CHARGE + ((off - p0) % 1.0 + n_) / 2.2
+                        if tau > te:
+                            continue
+                        ax_, ay_, sc = anchor(hi, tau)
+                        events["hooves"].append([t_anim + anim.leave[hi] + tau, float(np.clip(ax_ / W * 2 - 1, -1, 1)),
+                                                 1.0, hi, 0.0, 1.6])
             events["hooves"].sort()
     for sp in anim.specs:
         if sp["kind"] == "pour":
@@ -544,26 +570,53 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
                 frame = pour.draw(frame, ta)
             hh_, ww_ = rgba.shape[:2]
             for spr in anim.sprites(rgba, ta):
-                # the horse charging out of the painting: its own galloping pixels, growing as it nears,
-                # with a soft shadow beneath it
-                sc = spr["s"]
-                aqx = ox + (spr["ax"] - ww_ / 2) * s
-                aqy = oy + (spr["ay"] - hh_ / 2) * s
-                c0x, c0y = ox - s * ww_ / 2, oy - s * hh_ / 2
-                tx = sc * s * spr["x0"] + sc * (c0x - aqx) + aqx + spr["dx"] * s
-                ty = sc * s * spr["y0"] + sc * (c0y - aqy) + aqy + spr["dy"] * s
-                M = np.float32([[sc * s, 0, tx], [0, sc * s, ty]])
-                sa = cv2.warpAffine(spr["a"], M, (W, H), flags=cv2.INTER_LINEAR, borderValue=0) * spr["fade"]
-                if sa.max() <= 0:
+                hi = spr["hi"]
+                if spr["tau"] > exit_tau(hi):
                     continue
-                srgb = cv2.warpAffine(spr["rgb"], M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
-                lift = min(1.0, spr["tau"] / 0.4)
-                d = int((6 + 14 * lift) * k * sc)
-                shd = np.zeros_like(sa)
-                shd[d:, d // 2:] = sa[:-d, :-(d // 2) or None]
-                shd = cv2.GaussianBlur(shd, (0, 0), (5 + 8 * lift) * k * sc)
-                frame *= (1 - 0.38 * shd * (1 - sa))[..., None]
-                frame = frame * (1 - sa[..., None]) + np.clip(srgb, 0, 255) * sa[..., None]
+                sc = spr["s"]
+                mixv = spr["mix"]
+                ax_, ay_, _ = anchor(hi, spr["tau"])
+                # where paint turns into drawing: a ragged, brushy dissolve
+                cut_k = np.clip(((1 - mixv) * 1.4 - dissolve_n) / 0.25, 0, 1) if mixv > 0 else 1.0
+                anim_k = np.clip((mixv * 1.4 - (1 - dissolve_n)) / 0.25, 0, 1) if mixv > 0 else 0.0
+                lay_rgb = np.zeros((H, W, 3), np.float32)
+                lay_a = np.zeros((H, W), np.float32)
+                if mixv < 1:
+                    # the horse charging out of the painting: its own galloping pixels, growing as it nears
+                    aqx = ox + (spr["ax"] - ww_ / 2) * s
+                    aqy = oy + (spr["ay"] - hh_ / 2) * s
+                    c0x, c0y = ox - s * ww_ / 2, oy - s * hh_ / 2
+                    tx = sc * s * spr["x0"] + sc * (c0x - aqx) + aqx + spr["dx"] * s
+                    ty = sc * s * spr["y0"] + sc * (c0y - aqy) + aqy + spr["dy"] * s
+                    M = np.float32([[sc * s, 0, tx], [0, sc * s, ty]])
+                    sa = cv2.warpAffine(spr["a"], M, (W, H), flags=cv2.INTER_LINEAR, borderValue=0) * cut_k
+                    srgb = cv2.warpAffine(spr["rgb"], M, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+                    lay_rgb = srgb * sa[..., None]
+                    lay_a = sa
+                if mixv > 0:
+                    # ... and the animated horse it turns into, galloping off the screen
+                    rig = rig_for(hi)
+                    ra, (rax, ray) = rig.draw(spr["phase"], spr["facing"])
+                    M = np.float32([[s, 0, ax_ - rax * s], [0, s, ay_ - ray * s]])
+                    rr = cv2.warpAffine(ra, M, (W, H), flags=cv2.INTER_LINEAR, borderValue=0)
+                    aa = rr[..., 3] * anim_k
+                    lay_rgb = lay_rgb * (1 - aa[..., None]) + rr[..., :3] * aa[..., None]
+                    lay_a = lay_a * (1 - aa) + aa
+                    # its shadow on the ground
+                    L_ = rig.L * s
+                    sh_ = np.zeros((H, W), np.float32)
+                    cv2.ellipse(sh_, (int(ax_), int(ay_ + 4 * k)), (int(0.55 * L_), int(0.07 * L_)), 0, 0, 360, 1.0, -1)
+                    sh_ = cv2.GaussianBlur(sh_, (0, 0), 6 * k) * mixv
+                    frame *= (1 - 0.3 * sh_ * (1 - lay_a))[..., None]
+                if lay_a.max() <= 0:
+                    continue
+                lift = min(1.0, spr["tau"] / 0.4) * (1 - mixv)
+                d = int((6 + 14 * lift) * k * sc) + 1
+                shd = np.zeros_like(lay_a)
+                shd[d:, d // 2:] = lay_a[:-d, :-(d // 2) or None]
+                shd = cv2.GaussianBlur(shd, (0, 0), (5 + 8 * lift) * k * sc) * (1 - mixv)
+                frame *= (1 - 0.38 * shd * (1 - lay_a))[..., None]
+                frame = frame * (1 - lay_a[..., None]) + np.clip(lay_rgb, 0, 255)
             # twinkles (silent but for a barely-there airy shimmer)
             tt = (f - T_ANIM) / FPS
             if tt > 0.6:
