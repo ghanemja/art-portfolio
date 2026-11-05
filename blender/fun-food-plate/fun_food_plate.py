@@ -1,4 +1,4 @@
-"""Fun Food Plate: a top-down plate where each food is first scribbled in crayon,
+"""Fun Food Plate (dessert): a top-down plate where each food is first scribbled in crayon,
 then pops into a real 3D food.
 
 Run headless:
@@ -179,8 +179,8 @@ def smooth_noise(n_terms=4, amp=1.0):
     ph = [(random.uniform(0, 6.28), random.randint(2, 7)) for _ in range(n_terms)]
     return lambda t: amp * sum(math.sin(k * t + p) / k for p, k in ph)
 
-def group(name, x, y, rot=0.0):
-    e = bpy.data.objects.new(name, None); link(e)
+def group(name, x, y, rot=0.0, s=1.0):
+    e = bpy.data.objects.new(name, None); link(e); e["base"] = s
     e.location = (x, y, 0); e.rotation_euler = (0, 0, math.radians(rot))
     return e
 
@@ -193,9 +193,9 @@ bpy.ops.mesh.primitive_plane_add(size=30, location=(0, 0, 0))
 bpy.context.object.data.materials.append(bg_mat)
 
 plate_mat = mat("ceramic", (0.93, 0.93, 0.91), rough=0.18, spec=0.6, coat=0.4)
-plate = lathe("plate", [(0, TOP), (0.98, TOP), (1.06, 0.06), (1.2, 0.12), (1.33, 0.155),
-                         (1.37, 0.15), (1.38, 0.135), (1.34, 0.12), (1.18, 0.06),
-                         (0.9, 0.012), (0.88, 0.0), (0.6, 0.0), (0.58, 0.01), (0, 0.01)])
+plate = lathe("plate", [(0, TOP), (1.1, TOP), (1.17, 0.065), (1.28, 0.125), (1.37, 0.155),
+                         (1.41, 0.15), (1.42, 0.135), (1.38, 0.12), (1.22, 0.06),
+                         (0.95, 0.012), (0.93, 0.0), (0.6, 0.0), (0.58, 0.01), (0, 0.01)])
 plate.data.materials.append(plate_mat); subsurf(plate, 2)
 
 world = bpy.data.worlds.new("world"); scene.world = world; world.use_nodes = True
@@ -211,7 +211,7 @@ fill = bpy.data.lights.new("fill", "AREA"); fill.energy = 120; fill.size = 6
 fo = bpy.data.objects.new("fill", fill); link(fo); fo.location = (-3, 3, 6)
 fo.rotation_euler = (math.radians(-30), math.radians(-30), 0)
 
-cam = bpy.data.cameras.new("cam"); cam.type = "ORTHO"; cam.ortho_scale = 4.95
+cam = bpy.data.cameras.new("cam"); cam.type = "ORTHO"; cam.ortho_scale = 5.15
 co = bpy.data.objects.new("cam", cam); link(co); co.location = (0, -0.35, 10)
 scene.camera = co
 
@@ -223,15 +223,32 @@ def add_food(g, prints, outline, fill):
 
 # 1. Sprinkle donut ------------------------------------------------------
 def make_donut():
-    g = group("donut", -0.4, 0.42, 10)
+    g = group("donut", -0.42, 0.5, 10, 1.3)
     R, r = 0.27, 0.125
-    dough = mottle(mat("dough", (0.78, 0.47, 0.2), rough=0.6, sss=0.15),
-                   (0.55, 0.28, 0.1), scale=6, amount=0.8, bump=0.25, bump_scale=40)
+    dough = mat("dough", (0.78, 0.47, 0.2), rough=0.65, sss=0.2)
+    N = dough.node_tree.nodes; Lk = dough.node_tree.links
+    tc = N.new("ShaderNodeTexCoord"); sep = N.new("ShaderNodeSeparateXYZ")
+    ab = N.new("ShaderNodeMath"); ab.operation = "ABSOLUTE"
+    dv = N.new("ShaderNodeMath"); dv.operation = "DIVIDE"; dv.inputs[1].default_value = r
+    nz = N.new("ShaderNodeTexNoise"); nz.inputs["Scale"].default_value = 25
+    ad = N.new("ShaderNodeMath"); ad.operation = "MULTIPLY_ADD"; ad.inputs[1].default_value = 0.25
+    Lk.new(tc.outputs["Object"], sep.inputs[0]); Lk.new(sep.outputs["Z"], ab.inputs[0])
+    Lk.new(ab.outputs[0], dv.inputs[0]); Lk.new(tc.outputs["Object"], nz.inputs["Vector"])
+    Lk.new(nz.outputs["Fac"], ad.inputs[0]); Lk.new(dv.outputs[0], ad.inputs[2])
+    rp = N.new("ShaderNodeValToRGB"); el = rp.color_ramp.elements
+    el[0].position = 0.25; el[0].color = (0.96, 0.84, 0.6, 1)
+    el[1].position = 0.55; el[1].color = (0.7, 0.4, 0.14, 1)
+    el.new(0.85).color = (0.55, 0.28, 0.08, 1)
+    Lk.new(ad.outputs[0], rp.inputs[0]); Lk.new(rp.outputs[0], N["Principled BSDF"].inputs["Base Color"])
+    bt = N.new("ShaderNodeTexNoise"); bt.inputs["Scale"].default_value = 60; bt.inputs["Detail"].default_value = 10
+    Lk.new(tc.outputs["Object"], bt.inputs["Vector"])
+    bp = N.new("ShaderNodeBump"); bp.inputs["Strength"].default_value = 0.3; bp.inputs["Distance"].default_value = 0.01
+    Lk.new(bt.outputs["Fac"], bp.inputs["Height"]); Lk.new(bp.outputs["Normal"], N["Principled BSDF"].inputs["Normal"])
     bpy.ops.mesh.primitive_torus_add(major_radius=R, minor_radius=r, major_segments=72,
                                      minor_segments=36, location=(0, 0, TOP + r * 0.8))
     d = bpy.context.object; d.scale.z = 0.8; d.data.materials.append(dough); smooth(d); d.parent = g
     # icing: the top of a slightly fatter torus, cut with a wavy drip line
-    icing = mat("icing", (1.0, 0.36, 0.62), rough=0.22, spec=0.6, sss=0.1, coat=0.6)
+    icing = mottle(mat("icing", (0.97, 0.52, 0.66), rough=0.16, spec=0.6, sss=0.3, coat=0.5), (0.99, 0.62, 0.74), 5, 0.4, 0.08, 30)
     bpy.ops.mesh.primitive_torus_add(major_radius=R, minor_radius=r * 1.06, major_segments=144,
                                      minor_segments=48, location=(0, 0, 0))
     ic = bpy.context.object
@@ -242,7 +259,7 @@ def make_donut():
     bmesh.ops.delete(bm, geom=kill, context="VERTS"); bm.to_mesh(ic.data); bm.free()
     ic.location = (0, 0, TOP + r * 0.8); ic.scale.z = 0.8
     ic.data.materials.append(icing); smooth(ic)
-    s = ic.modifiers.new("thick", "SOLIDIFY"); s.thickness = 0.012; s.offset = 1
+    s = ic.modifiers.new("thick", "SOLIDIFY"); s.thickness = 0.018; s.offset = 1
     subsurf(ic, 1); ic.parent = g
     # sprinkles
     cols = [(1, 0.85, 0.1), (0.2, 0.55, 1), (0.25, 0.85, 0.4), (1, 1, 1), (0.6, 0.3, 0.95), (1, 0.45, 0.1)]
@@ -257,120 +274,217 @@ def make_donut():
         sp.rotation_euler = (math.radians(90), 0, random.uniform(0, math.pi))
         bv = sp.modifiers.new("b", "BEVEL"); bv.width = 0.008; bv.segments = 3
         sp.data.materials.append(smats[i % len(smats)]); smooth(sp); sp.parent = g
-    add_food(g, [(-0.4, 0.42, 0.42, 0.40, 10)], (0.55, 0.25, 0.1), (1.0, 0.45, 0.65))
+    add_food(g, [(-0.42, 0.5, 0.54, 0.52, 10)], (0.55, 0.25, 0.1), (1.0, 0.45, 0.65))
 
-# 2. Sushi rolls ---------------------------------------------------------
-def make_sushi():
-    g = group("sushi", 0.38, 0.48)
-    nori = mottle(mat("nori", (0.03, 0.07, 0.04), rough=0.55, spec=0.4),
-                  (0.08, 0.14, 0.06), scale=30, amount=0.7, bump=0.3, bump_scale=80)
-    rice = mottle(mat("rice", (0.97, 0.96, 0.92), rough=0.35, sss=0.3),
-                  (0.86, 0.85, 0.8), scale=60, amount=0.6, bump=0.9, bump_scale=48, voronoi=True)
-    salmon = mat("salmon", (1.0, 0.38, 0.15), rough=0.25, sss=0.4, coat=0.3)
-    nt = salmon.node_tree  # fat stripes
-    wv = nt.nodes.new("ShaderNodeTexWave"); wv.inputs["Scale"].default_value = 18
-    wv.inputs["Distortion"].default_value = 3
-    rp = nt.nodes.new("ShaderNodeValToRGB")
-    rp.color_ramp.elements[0].color = (1.0, 0.38, 0.15, 1); rp.color_ramp.elements[0].position = 0.7
-    rp.color_ramp.elements[1].color = (1.0, 0.8, 0.68, 1); rp.color_ramp.elements[1].position = 0.85
-    nt.links.new(wv.outputs["Fac"], rp.inputs["Fac"])
-    nt.links.new(rp.outputs["Color"], nt.nodes["Principled BSDF"].inputs["Base Color"])
-    cucumber = mat("cucumber", (0.45, 0.8, 0.3), rough=0.3, sss=0.3)
-    avocado = mat("avocado", (0.75, 0.85, 0.35), rough=0.45)
-    roe = mat("roe", (1.0, 0.3, 0.02), rough=0.08, trans=0.4, coat=1.0)
-    rolls = [(-0.16, 0.14), (0.17, -0.06), (-0.18, -0.2)]
-    for i, (x, y) in enumerate(rolls):
-        h = 0.15
-        cylinder("nori", 0.17, h, (x, y, TOP + h / 2), nori, g, 64, bevel=0.006)
-        cylinder("rice", 0.158, h + 0.012, (x, y, TOP + h / 2 + 0.006), rice, g, 64, bevel=0.02)
-        ang = random.uniform(0, 6.28)
-        cylinder("salmon", 0.055, h + 0.022, (x + 0.02 * math.cos(ang), y + 0.02 * math.sin(ang), TOP + h / 2 + 0.01),
-                 salmon, g, 32, bevel=0.01).rotation_euler.z = ang
-        cylinder("cuke", 0.03, h + 0.02, (x + 0.06 * math.cos(ang + 2.2), y + 0.06 * math.sin(ang + 2.2), TOP + h / 2 + 0.01),
-                 cucumber, g, 24, bevel=0.008)
-        cylinder("avo", 0.032, h + 0.02, (x + 0.06 * math.cos(ang - 2.0), y + 0.06 * math.sin(ang - 2.0), TOP + h / 2 + 0.01),
-                 avocado, g, 24, bevel=0.008)
-        if i == 0:  # roe on top of one roll
-            for k in range(28):
-                a = random.uniform(0, 6.28); rr = 0.14 * math.sqrt(random.random())
-                sphere("roe", 0.014, (x + rr * math.cos(a), y + rr * math.sin(a), TOP + h + 0.022), (1, 1, 1), roe, g, 12, 8)
-    wasabi = mottle(mat("wasabi", (0.55, 0.75, 0.2), rough=0.6), (0.4, 0.6, 0.1), 20, 0.8, 0.4, 50)
-    w = sphere("wasabi", 0.07, (0.2, 0.24, TOP + 0.02), (1.1, 0.9, 0.55), wasabi, g)
-    dp = w.modifiers.new("d", "DISPLACE"); tx = bpy.data.textures.new("wn", "CLOUDS"); tx.noise_scale = 0.3
-    dp.texture = tx; dp.strength = 0.03; subsurf(w, 1)
-    add_food(g, [(0.38 + x, 0.48 + y, 0.2, 0.19, 0) for x, y in rolls] + [(0.58, 0.72, 0.08, 0.07, 0)],
-             (0.1, 0.25, 0.15), (1.0, 0.5, 0.2))
+# shared: a polar-grid slab with per-vertex height and colour -------------
+from mathutils import noise as mnoise
 
-# 3. Pizza slice ---------------------------------------------------------
+def fbm(x, y, z=0.0, oct=4):
+    v, a, f = 0.0, 0.5, 1.0
+    for _ in range(oct):
+        v += a * mnoise.noise(Vector((x * f, y * f, z * f))); a *= 0.5; f *= 2.0
+    return v
+
+def polar_slab(name, parent, a0, a1, rmax, zfn, colfn, n_r=40, n_a=96, closed=False, apex=0.0):
+    """Top surface over angle a0..a1 and radius apex..rmax(a); zfn(t, a, x, y) -> height,
+    colfn(t, a, x, y) -> rgb. t is 0 at the centre/apex and 1 at the rim."""
+    bm = bmesh.new()
+    na = n_a if closed else n_a + 1
+    centre = bm.verts.new((0, 0, zfn(0, 0, 0, 0)))
+    rings = []
+    for i in range(1, n_r + 1):
+        t = i / n_r; ring = []
+        for j in range(na):
+            a = a0 + (a1 - a0) * j / n_a
+            r = apex + (rmax(a) - apex) * t
+            x, y = r * math.cos(a), r * math.sin(a)
+            ring.append(bm.verts.new((x, y, zfn(t, a, x, y))))
+        rings.append(ring)
+    segs = range(na) if closed else range(na - 1)
+    for j in segs:
+        k = (j + 1) % na
+        bm.faces.new((centre, rings[0][j], rings[0][k]))
+        for i in range(n_r - 1):
+            bm.faces.new((rings[i][j], rings[i + 1][j], rings[i + 1][k], rings[i][k]))
+    me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free()
+    col = me.color_attributes.new("Col", "FLOAT_COLOR", "POINT")
+    for v in me.vertices:
+        x, y = v.co.x, v.co.y; a = math.atan2(y, x); r = math.hypot(x, y)
+        t = 0 if r < 1e-6 else min(1.0, (r - apex) / max(1e-6, rmax(a) - apex))
+        c = colfn(t, a, x, y); col.data[v.index].color = (*c, 1)
+    ob = bpy.data.objects.new(name, me); link(ob, parent); smooth(ob)
+    so = ob.modifiers.new("solid", "SOLIDIFY"); so.thickness = 0.008; so.offset = -1
+    return ob
+
+def vcol_mat(name, rough=0.4, sss=0.1, coat=0.0, bump=0.0, bump_scale=60):
+    m = mat(name, (1, 1, 1), rough=rough, sss=sss, coat=coat)
+    N = m.node_tree.nodes; L = m.node_tree.links
+    ca = N.new("ShaderNodeVertexColor"); ca.layer_name = "Col"
+    L.new(ca.outputs["Color"], N["Principled BSDF"].inputs["Base Color"])
+    if sss:
+        L.new(ca.outputs["Color"], N["Principled BSDF"].inputs["Subsurface Radius"])
+    if bump:
+        tc = N.new("ShaderNodeTexCoord"); tx = N.new("ShaderNodeTexNoise")
+        tx.inputs["Scale"].default_value = bump_scale; tx.inputs["Detail"].default_value = 8
+        L.new(tc.outputs["Object"], tx.inputs["Vector"])
+        bp = N.new("ShaderNodeBump"); bp.inputs["Strength"].default_value = bump
+        bp.inputs["Distance"].default_value = 0.01
+        L.new(tx.outputs["Fac"], bp.inputs["Height"]); L.new(bp.outputs["Normal"], N["Principled BSDF"].inputs["Normal"])
+    return m
+
+def lerp(c1, c2, f):
+    f = max(0.0, min(1.0, f)); return tuple(a + (b - a) * f for a, b in zip(c1, c2))
+
+def sstep(e0, e1, x):
+    t = max(0.0, min(1.0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t)
+
+# 3. Vanilla ice cream scoop with chocolate drizzle and a cherry ----------
+def make_icecream():
+    g = group("icecream", 0.5, 0.52, 0)
+    R0 = 0.3
+    vanilla = mat("vanilla", (0.98, 0.93, 0.78), rough=0.5, sss=0.45)
+    vanilla.node_tree.nodes["Principled BSDF"].inputs["Subsurface Radius"].default_value = (1, 0.9, 0.7)
+    mottle(vanilla, (0.35, 0.25, 0.15), scale=120, amount=0.12, bump=0.5, bump_scale=35)
+    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=6, radius=R0, location=(0, 0, 0))
+    sc = bpy.context.object; sc.name = "scoop"; sc.parent = g
+    for v in sc.data.vertices:  # scooped ridges + lumps
+        a = math.atan2(v.co.y, v.co.x); k = 1 + 0.06 * fbm(v.co.x * 9, v.co.y * 9, v.co.z * 9) \
+            + 0.025 * math.sin(7 * a + v.co.z * 20)
+        v.co *= k
+    sc.scale = (1, 1, 0.72); sc.location.z = TOP + R0 * 0.5
+    sc.data.materials.append(vanilla); smooth(sc)
+    # melted puddle round the foot
+    nz = smooth_noise(6, 0.08)
+    pud = polar_slab("puddle", g, 0, 2 * math.pi, lambda a: 0.36 * (1 + nz(a)),
+                     lambda t, a, x, y: 0.012 * (1 - sstep(0.7, 1.0, t)),
+                     lambda t, a, x, y: (0.97, 0.92, 0.78), n_r=16, n_a=96, closed=True)
+    pud.location.z = TOP; pud.data.materials.append(vcol_mat("melt", rough=0.12, sss=0.3, coat=0.6))
+    # chocolate drizzle zig-zags over the dome
+    choc = mat("drizzle", (0.16, 0.06, 0.025), rough=0.12, spec=0.6, coat=1.0)
+    pts = []
+    for i in range(140):
+        t = i / 139; x = -0.27 + 0.54 * t; y = 0.2 * math.sin(t * math.pi * 7) * (1 - abs(2 * t - 1) * 0.3)
+        d2 = min(0.98, (x * x + y * y) / (R0 * R0))
+        pts.append((x, y, TOP + R0 * 0.5 + 0.72 * R0 * 1.03 * math.sqrt(1 - d2) + 0.008))
+    poly_curve("drizzle", pts, 0.014, choc, g)
+    cherry = mat("cherry", (0.45, 0.01, 0.03), rough=0.08, sss=0.2, coat=1.0)
+    sphere("cherry", 0.07, (0.02, 0.02, TOP + R0 * 1.25 + 0.05), (1, 1, 0.92), cherry, g, 48, 24)
+    stem = mat("stem", (0.35, 0.4, 0.12), rough=0.5)
+    poly_curve("stem", [(0.02, 0.02, TOP + R0 * 1.25 + 0.11), (0.06, 0.06, TOP + R0 * 1.25 + 0.16),
+                        (0.13, 0.08, TOP + R0 * 1.25 + 0.18)], 0.008, stem, g)
+    add_food(g, [(0.5, 0.52, 0.38, 0.37, 0)], (0.6, 0.45, 0.25), (1.0, 0.9, 0.6))
+
+# 4. Chocolate-chip cookies --------------------------------------------------
+def make_cookie(name, x, y, rot, rad):
+    g = group(name, x, y, rot)
+    nz = smooth_noise(6, 0.05)
+    rmax = lambda a: rad * (1 + nz(a))
+    def zfn(t, a, px, py):
+        return (0.012 + 0.03 * (1 - t * t) + 0.008 * fbm(px * 14, py * 14)) * (1 - sstep(0.88, 1.0, t) * 0.6)
+    def colfn(t, a, px, py):
+        c = lerp((0.86, 0.62, 0.32), (0.78, 0.52, 0.24), 0.5 + fbm(px * 20, py * 20))
+        c = lerp(c, (0.62, 0.36, 0.14), sstep(0.7, 1.0, t))          # browner edge
+        c = lerp(c, (0.93, 0.78, 0.5), sstep(0.25, 0.45, fbm(px * 35 + 4, py * 35)) * 0.6)  # sugar cracks
+        return c
+    ck = polar_slab(name, g, 0, 2 * math.pi, rmax, zfn, colfn, n_r=30, n_a=96, closed=True)
+    ck.location.z = TOP; ck.data.materials.append(vcol_mat("cookie", rough=0.75, sss=0.1, bump=0.6, bump_scale=45))
+    subsurf(ck, 1)
+    chip = mat("chip", (0.12, 0.05, 0.02), rough=0.3, coat=0.4)
+    for k in range(16):
+        a = random.uniform(0, 6.28); rr = rad * 0.8 * math.sqrt(random.random())
+        t = rr / rad; z = TOP + (0.012 + 0.03 * (1 - t * t))
+        c = sphere("chip", random.uniform(0.022, 0.034), (rr * math.cos(a), rr * math.sin(a), z),
+                   (1.2, 1, 0.6), chip, g, 16, 10)
+        c.rotation_euler.z = random.uniform(0, 3)
+    return g
+
+def make_cookies():
+    gs = [make_cookie("cookie1", 0.68, -0.1, 0, 0.27), make_cookie("cookie2", 0.34, -0.46, 40, 0.25)]
+    g = group("cookies", 0, 0)
+    for c in gs:
+        c.parent = g
+    add_food(g, [(0.68, -0.1, 0.31, 0.3, 0), (0.34, -0.46, 0.29, 0.28, 0)], (0.45, 0.25, 0.1), (0.85, 0.6, 0.3))
+
+# 3. Pizza slice (pepperoni) ---------------------------------------------
 def make_pizza():
-    ang = -22
-    g = group("pizza", 0.06, -0.05, ang)
-    L, half = 0.74, math.radians(23)
-    cheese = mottle(mat("cheese", (1.0, 0.72, 0.18), rough=0.3, sss=0.2, coat=0.3),
-                    (0.95, 0.5, 0.08), scale=9, amount=0.5, bump=0.4, bump_scale=25)
-    sauce = mat("sauce", (0.75, 0.12, 0.04), rough=0.4)
-    crust = mottle(mat("crust", (0.85, 0.55, 0.22), rough=0.6), (0.6, 0.32, 0.1), 7, 0.7, 0.3, 30)
-    def wedge(name, rad, h, z, m):
-        bm = bmesh.new(); vs = [bm.verts.new((0.04, 0, 0))]
-        for i in range(25):
-            a = -half + 2 * half * i / 24
-            vs.append(bm.verts.new((rad * math.cos(a), rad * math.sin(a), 0)))
-        f = bm.faces.new(vs)
-        ext = bmesh.ops.extrude_face_region(bm, geom=[f])
-        bmesh.ops.translate(bm, vec=(0, 0, h), verts=[v for v in ext["geom"] if isinstance(v, bmesh.types.BMVert)])
-        me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free()
-        ob = bpy.data.objects.new(name, me); link(ob, g); ob.location.z = z; me.materials.append(m)
-        bv = ob.modifiers.new("b", "BEVEL"); bv.width = 0.012; bv.segments = 3; smooth(ob)
-        return ob
-    wedge("base", L, 0.03, TOP, crust)
-    wedge("sauce", L - 0.03, 0.006, TOP + 0.03, sauce)
-    ch = wedge("cheese", L - 0.06, 0.012, TOP + 0.034, cheese)
-    # melty cheese edge
-    dp = ch.modifiers.new("d", "DISPLACE"); tx = bpy.data.textures.new("cn", "CLOUDS"); tx.noise_scale = 0.08
-    dp.texture = tx; dp.strength = 0.008
-    pts = [(L * math.cos(-half - 0.03 + (2 * half + 0.06) * i / 30), L * math.sin(-half - 0.03 + (2 * half + 0.06) * i / 30), TOP + 0.045)
-           for i in range(31)]
-    poly_curve("crust_rim", pts, 0.05, crust, g).scale = (1, 1, 0.8)
-    pep = mottle(mat("pepperoni", (0.7, 0.1, 0.06), rough=0.3, coat=0.5), (0.45, 0.04, 0.03), 25, 0.5, 0.3, 40)
-    for (d, a) in [(0.2, 0.02), (0.38, -0.2), (0.4, 0.2), (0.55, 0.0)]:
-        aa = a * half / 0.23 * 0.9
-        cylinder("pep", 0.055, 0.014, (d * math.cos(aa), d * math.sin(aa), TOP + 0.05), pep, g, 32, bevel=0.006)
-    basil = mat("basil", (0.15, 0.5, 0.12), rough=0.3, sss=0.2)
-    for (d, a, rot) in [(0.3, -0.1, 30), (0.5, 0.15, -40)]:
-        b = sphere("basil", 0.04, (d * math.cos(a), d * math.sin(a), TOP + 0.052), (1.6, 0.8, 0.12), basil, g)
-        b.rotation_euler.z = math.radians(rot)
+    ang = -12
+    g = group("pizza", 0.12, -0.05, ang, 1.25)
+    L, half = 0.76, math.radians(23)
+    edge_n = smooth_noise(5, 0.015)
+    rmax = lambda a: L + edge_n(a * 20)
+    CRUST = 0.84
+    def zfn(t, a, x, y):
+        side = 1 - abs(a) / half           # 0 at the cut sides
+        cut = sstep(0.0, 0.06, side)       # cheese thins to the cut edge
+        z = 0.012 + 0.024 * cut + 0.006 * fbm(x * 9, y * 9)
+        bub = max(0.0, fbm(x * 14 + 3, y * 14) - 0.15) * 0.05
+        z += bub * cut * (1 - sstep(CRUST - 0.04, CRUST, t))
+        if t > CRUST - 0.05:               # puffy cornicione
+            u = (t - (CRUST - 0.05)) / (1 - CRUST + 0.05)
+            z = max(z, 0.012 + 0.07 * math.sin(math.pi * min(1, u * 0.95)) ** 0.7 * (1 + 0.25 * fbm(x * 12, y * 12)))
+        return z
+    def colfn(t, a, x, y):
+        side = 1 - abs(a) / half
+        cheese = (1.0, 0.83, 0.45)
+        brown = (0.72, 0.42, 0.14)
+        n = fbm(x * 14 + 3, y * 14)
+        c = lerp(cheese, (1.0, 0.92, 0.65), 0.5 + 0.8 * fbm(x * 30, y * 30))
+        c = lerp(c, brown, sstep(0.18, 0.4, n))                 # browned blisters
+        c = lerp(c, (0.8, 0.18, 0.05), (1 - sstep(0.02, 0.07, side)) * 0.9)   # sauce at the cut
+        if t > CRUST - 0.06:
+            u = sstep(CRUST - 0.06, CRUST, t)
+            crust = lerp((0.86, 0.6, 0.3), (0.55, 0.3, 0.12), 0.5 + fbm(x * 18, y * 18))
+            crust = lerp(crust, (0.25, 0.12, 0.05), sstep(0.3, 0.5, fbm(x * 25 + 7, y * 25)))  # char
+            c = lerp(lerp(c, (0.8, 0.2, 0.06), (1 - u) * 0.6), crust, u)
+        return c
+    pm = vcol_mat("pizza", rough=0.38, sss=0.15, coat=0.35, bump=0.25, bump_scale=70)
+    pz = polar_slab("pizza", g, -half, half, rmax, zfn, colfn, n_r=70, n_a=90, apex=0.0)
+    pz.location.z = TOP; pz.data.materials.append(pm); subsurf(pz, 1)
+    pep_m = vcol_mat("pepperoni", rough=0.22, sss=0.05, coat=0.7, bump=0.2, bump_scale=90)
+    for (d, a, r) in [(0.22, 0.03, 0.052), (0.38, -0.19, 0.056), (0.42, 0.2, 0.055), (0.6, -0.03, 0.058), (0.56, 0.32, 0.05)]:
+        aa = a * half / 0.23 * 0.85
+        cx, cy = d * math.cos(aa), d * math.sin(aa)
+        rn = smooth_noise(3, 0.04)
+        pp = polar_slab("pep", g, 0, 2 * math.pi, lambda q, r=r, rn=rn: r * (1 + rn(q)),
+                        lambda t, q, x, y: 0.004 + 0.012 * t ** 2.5,       # cupped edges
+                        lambda t, q, x, y: lerp(lerp((0.62, 0.08, 0.05), (0.75, 0.16, 0.08), 0.5 + fbm(x * 60, y * 60)),
+                                                (0.3, 0.05, 0.03), sstep(0.75, 1.0, t)),
+                        n_r=12, n_a=48, closed=True)
+        z_here = TOP + 0.036 + 0.01
+        pp.location = (cx, cy, z_here); pp.data.materials.append(pep_m)
+    herb = mat("oregano", (0.18, 0.28, 0.08), rough=0.7)
+    for k in range(40):
+        u = random.uniform(0.1, 0.8); a = random.uniform(-half * 0.85, half * 0.85)
+        sphere("herb", 0.006, (u * L * math.cos(a), u * L * math.sin(a), TOP + 0.05), (1.6, 1, 0.4), herb, g, 8, 6)
     ca, sa = math.cos(math.radians(ang)), math.sin(math.radians(ang))
-    cx, cy = 0.06 + 0.4 * ca, -0.05 + 0.4 * sa
-    add_food(g, [(cx, cy, 0.4, 0.22, ang)], (0.65, 0.35, 0.05), (1.0, 0.75, 0.15))
+    cx, cy = 0.12 + 0.5 * ca, -0.05 + 0.5 * sa
+    add_food(g, [(cx, cy, 0.52, 0.28, ang)], (0.65, 0.35, 0.05), (1.0, 0.75, 0.15))
 
-# 4. Smiley fried egg ----------------------------------------------------
+# 4. Fried egg -----------------------------------------------------------
 def make_egg():
-    g = group("egg", -0.45, -0.3, 0)
-    white = mat("eggwhite", (0.98, 0.97, 0.94), rough=0.15, sss=0.3, coat=0.5)
-    nz = smooth_noise(5, 0.09)
-    bm = bmesh.new(); vs = []
-    for i in range(96):
-        a = 2 * math.pi * i / 96; rr = 0.31 * (1 + nz(a))
-        vs.append(bm.verts.new((rr * math.cos(a), rr * math.sin(a), 0)))
-    f = bm.faces.new(vs)
-    ext = bmesh.ops.extrude_face_region(bm, geom=[f])
-    bmesh.ops.translate(bm, vec=(0, 0, 0.025), verts=[v for v in ext["geom"] if isinstance(v, bmesh.types.BMVert)])
-    me = bpy.data.meshes.new("eggwhite"); bm.to_mesh(me); bm.free()
-    ew = bpy.data.objects.new("eggwhite", me); link(ew, g); ew.location.z = TOP; me.materials.append(white)
-    bv = ew.modifiers.new("b", "BEVEL"); bv.width = 0.012; bv.segments = 4; smooth(ew)
-    crisp = mottle(mat("crisp", (0.85, 0.6, 0.3), rough=0.5), (0.95, 0.85, 0.65), 14, 0.5, 0.4, 40)
-    edge = [(0.31 * (1 + nz(a)) * math.cos(a), 0.31 * (1 + nz(a)) * math.sin(a), TOP + 0.014)
-            for a in [2 * math.pi * i / 96 for i in range(96)]]
-    poly_curve("crisp", edge, 0.016, crisp, g, cyclic=True)
-    yolk = mat("yolk", (1.0, 0.55, 0.03), rough=0.08, sss=0.4, coat=1.0)
-    sphere("yolk", 0.115, (0.0, 0.03, TOP + 0.03), (1, 1, 0.6), yolk, g, 48, 24)
-    ketchup = mat("ketchup", (0.75, 0.04, 0.03), rough=0.1, coat=1.0)
-    smile = [(0.17 * math.cos(a), -0.02 + 0.13 * math.sin(a), TOP + 0.035)
-             for a in [math.radians(200 + 140 * i / 20) for i in range(21)]]
-    poly_curve("smile", smile, 0.02, ketchup, g)
-    for x in (-0.15, 0.15):
-        sphere("eye", 0.03, (x, 0.13, TOP + 0.033), (1, 1, 0.5), ketchup, g)
-    add_food(g, [(-0.45, -0.3, 0.34, 0.33, 0)], (0.9, 0.6, 0.1), (1.0, 0.8, 0.2))
+    g = group("egg", -0.58, -0.45, 20, 1.2)
+    nz = smooth_noise(6, 0.1)
+    rmax = lambda a: 0.32 * (1 + nz(a))
+    def zfn(t, a, x, y):
+        thick = 0.006 + 0.02 * (1 - sstep(0.3, 0.75, t)) + 0.004 * fbm(x * 12, y * 12)
+        bub = max(0.0, fbm(x * 20 + 5, y * 20) - 0.25) * 0.03 * (1 - sstep(0.6, 0.9, t))
+        return (thick + bub) * (1 - sstep(0.9, 1.0, t) * 0.7)
+    def colfn(t, a, x, y):
+        c = lerp((0.98, 0.97, 0.94), (0.93, 0.92, 0.88), 0.5 + fbm(x * 25, y * 25))
+        lace = sstep(0.8, 1.0, t) * (0.6 + 0.6 * fbm(x * 30 + 1, y * 30))
+        return lerp(c, (0.78, 0.52, 0.22), lace)
+    em = vcol_mat("eggwhite", rough=0.12, sss=0.35, coat=0.6, bump=0.1, bump_scale=40)
+    ew = polar_slab("eggwhite", g, 0, 2 * math.pi, rmax, zfn, colfn, n_r=40, n_a=128, closed=True)
+    ew.location.z = TOP; ew.data.materials.append(em); subsurf(ew, 1)
+    yolk = mat("yolk", (1.0, 0.5, 0.02), rough=0.06, sss=0.5, coat=1.0)
+    yolk.node_tree.nodes["Principled BSDF"].inputs["Subsurface Radius"].default_value = (1.0, 0.4, 0.05)
+    y = sphere("yolk", 0.105, (0.03, 0.02, TOP + 0.022), (1, 0.95, 0.55), yolk, g, 64, 32)
+    pepper = mat("pepper", (0.05, 0.04, 0.03), rough=0.8)
+    for k in range(26):
+        a = random.uniform(0, 6.28); rr = random.uniform(0.02, 0.24)
+        sphere("pep", random.uniform(0.004, 0.007), (rr * math.cos(a), rr * math.sin(a), TOP + 0.03 + (0.04 if rr < 0.1 else 0)),
+               (1.3, 1, 0.5), pepper, g, 6, 4)
+    add_food(g, [(-0.58, -0.45, 0.42, 0.41, 0)], (0.9, 0.6, 0.1), (1.0, 0.8, 0.2))
 
 # 5. Strawberries --------------------------------------------------------
 def make_strawberry(name, x, y, rot, size):
@@ -403,12 +517,12 @@ def make_strawberry(name, x, y, rot, size):
     return g
 
 def make_strawberries():
-    g1 = make_strawberry("berry1", 0.55, -0.66, 145, 0.18)
-    g2 = make_strawberry("berry2", 0.22, -0.92, 100, 0.16)
+    g1 = make_strawberry("berry1", -0.15, -0.9, 10, 0.21)
+    g2 = make_strawberry("berry2", 0.32, -0.86, 160, 0.21)
     g = group("berries", 0, 0)
     for c in (g1, g2):
         c.parent = g
-    add_food(g, [(0.54, -0.65, 0.21, 0.15, 145), (0.22, -0.9, 0.19, 0.14, 100)], (0.7, 0.05, 0.1), (1.0, 0.2, 0.25))
+    add_food(g, [(-0.15, -0.9, 0.26, 0.18, 10), (0.32, -0.86, 0.26, 0.18, 160)], (0.7, 0.05, 0.1), (1.0, 0.2, 0.25))
 
 # 6. Macarons ------------------------------------------------------------
 def make_macaron(name, x, y, col, rot=0, tilt=0):
@@ -417,7 +531,7 @@ def make_macaron(name, x, y, col, rot=0, tilt=0):
                    8, 0.6, 0.2, 40)
     feet = mottle(mat("feet", tuple(c * 0.92 for c in col), rough=0.9), (1, 1, 1), 30, 0.4, 1.0, 120)
     cream = mat("cream", (0.98, 0.93, 0.85), rough=0.5, sss=0.2)
-    r = 0.15; base = TOP + 0.0
+    r = 0.19; base = TOP + 0.0
     sphere("bottom", r, (0, 0, base + 0.03), (1, 1, 0.22), shell, g, 48, 24)
     bpy.ops.mesh.primitive_torus_add(major_radius=r * 0.93, minor_radius=0.016, location=(0, 0, base + 0.045))
     t = bpy.context.object; t.data.materials.append(feet); t.parent = g; smooth(t)
@@ -434,13 +548,13 @@ def make_macaron(name, x, y, col, rot=0, tilt=0):
     return g
 
 def make_macarons():
-    gs = [make_macaron("mac1", -0.02, -0.58, (0.4, 0.85, 0.65), 15, 90),
-          make_macaron("mac2", -0.2, -0.88, (0.7, 0.5, 0.95), 0),
-          make_macaron("mac3", 0.2, -0.42, (1.0, 0.75, 0.25), -20, 90)]
+    gs = [make_macaron("mac1", -0.62, -0.22, (0.4, 0.85, 0.65), 70, 90),
+          make_macaron("mac2", -0.3, -0.5, (0.7, 0.5, 0.95), 0),
+          make_macaron("mac3", -0.62, -0.68, (1.0, 0.75, 0.25), -20, 90)]
     g = group("macarons", 0, 0)
     for c in gs:
         c.parent = g
-    add_food(g, [(-0.02, -0.58, 0.19, 0.14, 15), (-0.2, -0.88, 0.18, 0.18, 0), (0.2, -0.42, 0.19, 0.14, -20)],
+    add_food(g, [(-0.62, -0.22, 0.23, 0.16, 70), (-0.3, -0.5, 0.22, 0.22, 0), (-0.62, -0.68, 0.23, 0.16, -20)],
              (0.4, 0.3, 0.7), (0.6, 0.9, 0.75))
 
 # 7. Gummy bears ---------------------------------------------------------
@@ -455,22 +569,45 @@ def make_bear(name, x, y, rot, col):
         e = mb.elements.new(); e.co = co; e.radius = r * 1.45; e.type = "ELLIPSOID"
         e.size_x, e.size_y, e.size_z = sc
     ob = bpy.data.objects.new(name + "_mb", mb); link(ob, g); ob.location.z = TOP + 0.07
-    ob.scale = (1.55, 1.55, 1.4)
+    ob.scale = (1.9, 1.9, 1.6)
     gm = mat("gummy_" + name, col, rough=0.12, sss=0.6, trans=0.55, coat=0.8)
     mb.materials.append(gm)
     return g
 
 def make_gummies():
-    gs = [make_bear("bear_red", -0.88, 0.04, 18, (1.0, 0.08, 0.05)),
-          make_bear("bear_green", -0.6, -0.8, -35, (0.3, 0.9, 0.1)),
-          make_bear("bear_yellow", -0.03, 0.12, 70, (1.0, 0.75, 0.0))]
+    gs = [make_bear("bear_red", 0.05, 0.92, 90, (1.0, 0.08, 0.05)),
+          make_bear("bear_green", -1.0, 0.12, -10, (0.3, 0.9, 0.1)),
+          make_bear("bear_yellow", 0.1, 0.0, 20, (1.0, 0.75, 0.0))]
     g = group("gummies", 0, 0)
     for c in gs:
         c.parent = g
-    add_food(g, [(-0.88, 0.04, 0.17, 0.24, 18), (-0.6, -0.8, 0.17, 0.24, -35), (-0.03, 0.12, 0.17, 0.24, 70)],
+    add_food(g, [(0.05, 0.92, 0.2, 0.29, 90), (-1.0, 0.12, 0.2, 0.29, -10), (0.1, 0.0, 0.2, 0.29, 20)],
              (0.85, 0.1, 0.3), (1.0, 0.65, 0.1))
 
-for maker in (make_donut, make_sushi, make_pizza, make_egg, make_strawberries, make_macarons, make_gummies):
+# 0. Chocolate sauce swoosh (plated first, food sits on it) -----------------
+def make_sauce():
+    g = group("sauce", 0, 0)
+    choc = mat("chocolate", (0.16, 0.06, 0.025), rough=0.12, spec=0.6, coat=1.0)
+    wob = smooth_noise(3, 0.03)
+    cu = bpy.data.curves.new("sauce", "CURVE"); cu.dimensions = "3D"
+    cu.bevel_depth = 1.0; cu.bevel_resolution = 6; cu.use_fill_caps = True
+    sp = cu.splines.new("POLY"); n = 90; sp.points.add(n - 1)
+    for i, pt in enumerate(sp.points):
+        t = i / (n - 1); a = math.radians(165 + 160 * t)
+        rr = 1.04 + wob(a * 3)
+        pt.co = (rr * math.cos(a), rr * math.sin(a), 0, 1)
+        pt.radius = 0.12 * math.sin(math.pi * (0.04 + 0.92 * t)) ** 0.6 * (1 + 0.15 * math.sin(9 * t))
+    ob = bpy.data.objects.new("sauce", cu); link(ob, g); cu.materials.append(choc)
+    ob.scale.z = 0.22; ob.location.z = TOP + 0.002
+    drops = []
+    for (x, y, r) in [(1.0, -0.22, 0.05), (1.03, -0.07, 0.037)]:
+        d = sphere("drop", r, (x, y, TOP), (1, 1, 0.3), choc, g, 32, 16)
+        drops.append(d)
+    add_food(g, [(-0.95, -0.42, 0.22, 0.11, -65), (-0.5, -0.92, 0.22, 0.11, -30), (0.25, -1.02, 0.22, 0.11, 10), (0.85, -0.6, 0.2, 0.11, 55)],
+             (0.3, 0.15, 0.05), (0.45, 0.22, 0.1))
+    foods[-1]["pour"] = (ob, drops)
+
+for maker in (make_sauce, make_donut, make_icecream, make_cookies, make_macarons, make_strawberries, make_gummies):
     maker()
 
 # ---------------------------------------------------------------- crayon scribbles
@@ -530,7 +667,7 @@ def draw_on(ob, f0, f1):
 def pop(g, f):
     keys = [(f - 1, 0.0), (f, 0.35), (f + 3, 1.16), (f + 6, 0.94), (f + 9, 1.03), (f + 12, 1.0)]
     for fr, s in keys:
-        g.scale = (max(s, 1e-4),) * 3; g.keyframe_insert("scale", frame=fr)
+        g.scale = (max(s * g.get("base", 1.0), 1e-4),) * 3; g.keyframe_insert("scale", frame=fr)
 
 events = []
 frame = 14
@@ -552,7 +689,18 @@ for food in foods:
     pop_f = end + 4
     for ob, st in strokes:
         key_hide(ob, 0, True); key_hide(ob, st, False); key_hide(ob, pop_f, True)
-    pop(g, pop_f)
+    if food.get("pour"):  # sauce pours along its path, drops plop in after
+        ob, drops = food["pour"]
+        cu = ob.data; cu.bevel_factor_mapping_end = "SPLINE"
+        cu.bevel_factor_end = 0.0; cu.keyframe_insert("bevel_factor_end", frame=pop_f - 1)
+        cu.bevel_factor_end = 1.0; cu.keyframe_insert("bevel_factor_end", frame=pop_f + 9)
+        key_hide(ob, 0, True); key_hide(ob, pop_f - 1, False)
+        for k, d in enumerate(drops):
+            f = pop_f + 9 + 2 * k
+            for fr, sc in [(f - 1, 0.0), (f, 0.5), (f + 2, 1.2), (f + 4, 1.0)]:
+                d.scale = (max(sc, 1e-4), max(sc, 1e-4), max(sc, 1e-4) * 0.3); d.keyframe_insert("scale", frame=fr)
+    else:
+        pop(g, pop_f)
     events.append(dict(type="pop", frame=pop_f))
     frame = pop_f + 5
 
@@ -561,7 +709,7 @@ end_full = frame + HOLD
 # loop back to the empty plate, like the original clip
 for food in foods:
     g = food["g"]
-    g.scale = (1, 1, 1); g.keyframe_insert("scale", frame=end_full)
+    g.scale = (g.get("base", 1.0),) * 3; g.keyframe_insert("scale", frame=end_full)
     g.scale = (1e-4,) * 3; g.keyframe_insert("scale", frame=end_full + 1)
 events.append(dict(type="clear", frame=end_full + 1))
 scene.frame_start = 1
