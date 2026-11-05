@@ -1,13 +1,18 @@
-"""Soundtrack for a painting reel, built from the reel's events:
-crayon scratching while the doodle is drawn, a soft bloop as each region floods
-with paint (rising in pitch), a shimmer as the crayon lines wash away, a
-gentle settle pop, then ambient beds matched to whatever moves in the painting
-(waves, a waterfall's rush, rustling leaves, wind, an airy pad), over a
-kalimba-and-pad tune.
+"""Soundtrack for a painting reel: only nature sounds and paper/crayon/paint
+effects, nothing tonal or melodic. Everything is filtered noise.
 
-The sound effects keep most of their energy between 500 Hz and 4 kHz so they
-come through phone speakers. master() makes the final mix loud enough to post:
--14 LUFS integrated, true peak -1 dBTP, with a two-pass ffmpeg loudnorm.
+  unwrap   the parcel lands (thump), the twine snaps, each flap rustles back,
+           the paper crumples (crackle) and whooshes away
+  doodle   crayon scratching
+  flood    a soft wet plop for each region (brighter as they go), a watery
+           shimmer as the crayon lines wash away, a muffled settle thump
+  life     ambient beds matched to what moves: waves, a waterfall's rush,
+           rustling leaves, wind, an airy breeze, galloping hooves
+  twinkles at most a barely-there airy shimmer, no pitch
+
+The effects keep most of their energy between 500 Hz and 4 kHz so they come
+through phone speakers. master() makes the final mix -14 LUFS integrated,
+true peak under -1 dBTP (two-pass ffmpeg loudnorm, then a gain top-up).
 """
 import json, os, re, subprocess, wave
 import numpy as np
@@ -16,9 +21,13 @@ from scipy.signal import butter, sosfilt
 SR = 48000
 
 
+def _band(x, lo, hi):
+    sos = butter(2, [lo, min(hi, SR / 2 - 100)], btype="band", fs=SR, output="sos")
+    return sosfilt(sos, x)
+
+
 def _bandnoise(n, lo, hi, rng):
-    sos = butter(2, [lo, hi], btype="band", fs=SR, output="sos")
-    return sosfilt(sos, rng.standard_normal(n))
+    return _band(rng.standard_normal(n), lo, hi)
 
 
 def _env(n, attack, release):
@@ -31,10 +40,17 @@ def _env(n, attack, release):
     return e
 
 
-def _tone(f, dur, decay, harm=((1, 1.0),)):
-    t = np.arange(int(dur * SR)) / SR
-    y = sum(a * np.sin(2 * np.pi * f * h * t) * np.exp(-t * decay * h ** 0.5) for h, a in harm)
-    return y * np.minimum(1, t * 400)
+def _burst(rng, dur, lo, hi, decay, attack=0.002):
+    L = int(dur * SR)
+    t = np.arange(L) / SR
+    return _bandnoise(L, lo, hi, rng) * np.exp(-t * decay) * np.minimum(1, t / attack)
+
+
+def _crackle(rng, dur, density, lo=1500, hi=8000):
+    """Paper crackle: sparse random clicks through a band-pass, over a soft rustle."""
+    L = int(dur * SR)
+    imp = (rng.random(L) < density / SR) * rng.uniform(-1, 1, L) * rng.uniform(0.3, 1, L)
+    return _band(imp, lo, hi) * 6 + 0.35 * _bandnoise(L, 700, 4500, rng)
 
 
 def _add(mix, y, at):
@@ -45,47 +61,34 @@ def _add(mix, y, at):
     mix[a:a + len(y)] += y
 
 
-def _bloop(f, rng, dur=0.2):
-    """Soft, round, water-drop pop: a quick upward glide with a couple of
-    harmonics so it still reads on a small speaker, plus a tiny wet tick."""
-    t = np.arange(int(dur * SR)) / SR
-    fr = f * (0.62 + 0.38 * (1 - np.exp(-t * 55)))
-    ph = 2 * np.pi * np.cumsum(fr) / SR
-    env = np.exp(-t * 20) * np.minimum(1, t * 900)
-    y = (np.sin(ph) + 0.45 * np.sin(2 * ph) + 0.18 * np.sin(3 * ph)) * env
-    tick = _bandnoise(len(t), 1500, 4000, rng) * np.exp(-t * 260)
-    return y + 0.25 * tick
-
-
 def make(ev, path, seed=0):
     rng = np.random.default_rng(seed)
     fps = ev["fps"]
     n = int(SR * ev["frames"] / fps) + SR // 2
     at = lambda f: SR * f / fps
     mix = np.zeros(n)
-    hz = lambda m: 440 * 2 ** ((m - 69) / 12)
 
-    # --- tune: kalimba plucks over a soft pad, in a key picked per reel
-    roots = [60, 62, 65, 67, 57]
-    root = roots[rng.integers(len(roots))]
-    scale = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24]
-    chords = [[0, 4, 7], [-3, 0, 4], [-7, -3, 0], [-5, -1, 2]]
-    beat = 60 / 92
-    nbars = int(n / SR / (4 * beat)) + 1
-    for b in range(nbars):
-        for c in chords[b % 4]:  # pad
-            dur = 4 * beat + 0.6
-            t = np.arange(int(dur * SR)) / SR
-            f = hz(root - 12 + c)
-            y = (np.sin(2 * np.pi * f * t) + 0.35 * np.sin(2 * np.pi * 2.003 * f * t)
-                 + 0.15 * np.sin(2 * np.pi * 3.01 * f * t)) * _env(len(t), 0.8, 0.8)
-            _add(mix, 0.012 * y, b * 4 * beat * SR)
-        for i in range(8):  # plucks on eighths, sparse
-            if rng.random() < 0.45:
-                continue
-            m = root + 12 + scale[rng.integers(8)]
-            y = _tone(hz(m), 0.9, 6, ((1, 1.0), (2.76, 0.22), (5.4, 0.08)))
-            _add(mix, 0.035 * y, (b * 4 + i * 0.5) * beat * SR)
+    # --- the parcel
+    u = ev.get("unwrap")
+    if u:
+        _add(mix, 0.5 * _burst(rng, 0.25, 70, 500, 18) + 0.18 * _burst(rng, 0.12, 700, 3500, 45), at(u["land"]))
+        _add(mix, 0.55 * _burst(rng, 0.06, 2000, 9000, 260, 0.0005) + 0.25 * _burst(rng, 0.1, 500, 2000, 90),
+             at(u["snap"]))
+        for f in u["flaps"]:
+            d = 0.42
+            y = _crackle(rng, d, 160) * _env(int(d * SR), 0.03, 0.2)
+            _add(mix, 0.11 * y, at(f))
+        for i, f in enumerate(u["crumple"]):
+            d = 0.35
+            y = _crackle(rng, d, 900) * _env(int(d * SR), 0.01, 0.12)
+            _add(mix, 0.13 * y, at(f))
+        # whoosh: a band of noise sliding up as the paper leaves
+        d = 0.6
+        L = int(d * SR)
+        t = np.linspace(0, 1, L)
+        w = (_bandnoise(L, 250, 1000, rng) * (1 - t) + _bandnoise(L, 900, 3000, rng) * np.sin(np.pi * t)
+             + _bandnoise(L, 2500, 7000, rng) * t)
+        _add(mix, 0.16 * w * np.sin(np.pi * t) ** 1.5, at(u["whoosh"]))
 
     # --- crayon scratching while drawing: strokes at ~6-9 per second
     d0, d1 = ev["draw"]
@@ -98,21 +101,25 @@ def make(ev, path, seed=0):
     grit = 0.7 + 0.3 * (rng.random(L) > 0.5)
     _add(mix, 0.09 * scratch * strokes * grit * _env(L, 0.05, 0.15), a)
 
-    # --- a bloop for every region that floods with paint, climbing the scale
+    # --- a soft wet plop for each region that floods with paint
     for i, f in enumerate(ev["blooms"]):
-        m = root + 12 + scale[min(i, len(scale) - 1)]
-        _add(mix, 0.10 * _bloop(hz(m), rng), at(f))
+        fc = 600 * 1.06 ** i
+        y = 0.9 * _burst(rng, 0.14, fc * 0.55, fc * 1.7, 30, 0.004) + 0.25 * _burst(rng, 0.03, 2500, 6000, 220, 0.0008)
+        _add(mix, 0.22 * y, at(f))
 
-    # --- the crayon lines wash away: a soft watery shimmer
+    # --- the crayon lines wash away: a watery shimmer of noise
     wa = at(ev["wash"])
     L = int(0.8 * SR)
-    sh = _bandnoise(L, 2500, 7000, rng) * np.sin(np.linspace(0, np.pi, L)) ** 2
-    _add(mix, 0.05 * sh, wa)
-    for i, m in enumerate([root + 24, root + 28, root + 31, root + 36]):
-        _add(mix, 0.025 * _tone(hz(m), 0.7, 7), wa + 0.07 * i * SR)
+    sh = (_bandnoise(L, 2500, 7000, rng) + 0.5 * _crackle(rng, 0.8, 120, 3000, 9000)) * np.sin(np.linspace(0, np.pi, L)) ** 2
+    _add(mix, 0.07 * sh, wa)
 
-    # --- settle: one gentle, slightly lower pop as the painting lands
-    _add(mix, 0.09 * _bloop(hz(root + 7), rng, 0.25), at(ev["done"]))
+    # --- settle: one muffled thump
+    _add(mix, 0.28 * _burst(rng, 0.2, 180, 1300, 20, 0.003) + 0.06 * _burst(rng, 0.03, 2000, 5000, 200), at(ev["done"]))
+
+    # --- twinkles: a barely-there airy shimmer, no pitch
+    for tw in ev.get("twinkles", []):
+        L = int(0.3 * SR)
+        _add(mix, 0.012 * _bandnoise(L, 5000, 11000, rng) * np.sin(np.linspace(0, np.pi, L)) ** 2, at(tw))
 
     # --- ambient beds for the moving painting, fading in with the motion
     if ev.get("ambient"):
@@ -141,11 +148,23 @@ def make(ev, path, seed=0):
                 y = 0.09 * nz * env
             elif kind == "wind":     # slow, breathy wind
                 y = 0.08 * _bandnoise(L, 300, 1400, rng) * (0.45 + 0.55 * np.sin(2 * np.pi * 0.17 * t + 1) ** 2)
-            elif kind == "pad":      # airy, magical pad
+            elif kind in ("pad", "airy"):   # an airy breeze for magical skies: high, soft, slowly breathing
+                y = (0.05 * _bandnoise(L, 1500, 6000, rng) * (0.5 + 0.5 * np.sin(2 * np.pi * 0.21 * t) ** 2)
+                     + 0.04 * _bandnoise(L, 400, 1500, rng) * (0.6 + 0.4 * np.sin(2 * np.pi * 0.13 * t + 2)))
+            elif kind == "gallop":   # ta-da-dum hoofbeats, muffled, with a splash on each stride
+                g = ev.get("gallop", {"freq": 2.4, "phases": [0.0, 0.37, 0.71]})
+                per = 1.0 / g["freq"]
                 y = np.zeros(L)
-                for m in (root + 24, root + 28, root + 31, root + 35):
-                    y += np.sin(2 * np.pi * hz(m) * t + rng.uniform(0, 6)) * (0.6 + 0.4 * np.sin(2 * np.pi * rng.uniform(0.1, 0.3) * t))
-                y = 0.012 * y + 0.02 * _bandnoise(L, 3000, 7000, rng) * (0.5 + 0.5 * np.sin(2 * np.pi * 0.25 * t))
+                for j, ph in enumerate(g["phases"][:3]):
+                    gain = [1.0, 0.75, 0.6][j]
+                    s = ph * per
+                    while s < L / SR:
+                        for off, amp in ((0.0, 0.6), (0.07, 0.75), (0.15, 1.0)):
+                            hit = 0.8 * _burst(rng, 0.09, 90, 700, 38) + 0.35 * _burst(rng, 0.04, 700, 2500, 90)
+                            _add(y, gain * amp * hit, (s + off) * SR)
+                        _add(y, gain * 0.35 * _burst(rng, 0.12, 1500, 6000, 40), (s + 0.17) * SR)
+                        s += per
+                y = 0.16 * y
             else:
                 continue
             _add(mix, 0.65 * y * fade_in, a0)

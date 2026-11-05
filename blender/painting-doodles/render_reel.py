@@ -22,6 +22,7 @@ REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
 sys.path.insert(0, HERE)
 import soundtrack  # noqa: E402
 import animate  # noqa: E402
+import unwrap  # noqa: E402
 
 FPS = 30
 
@@ -254,8 +255,9 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
     NW = min(nreg, 12)                       # flood waves; regions grouped in drawing order
     wave_of = [i * NW // nreg for i in range(nreg)]
     STAG, FDUR = 4, 22                       # 0.13 s apart, each floods over ~0.5 s
-    T_DRAW0, T_DRAW1 = 10, 130
-    T_FLOOD = 136
+    T_DRAW0 = unwrap.END + 4                 # after the parcel is unwrapped
+    T_DRAW1 = T_DRAW0 + 120
+    T_FLOOD = T_DRAW1 + 6
     wave_start = [T_FLOOD + i * STAG for i in range(NW)]
     T_GLOBAL = wave_start[-1] + 8            # last gaps fill in
     GDUR = 14
@@ -287,6 +289,14 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
     rgba[pad:pad + h, pad:pad + w, 3] = alpha
     shadow = cv2.GaussianBlur(rgba[..., 3], (0, 0), 14 * k)
     anim = animate.Animator(name, paint, pad, k, rng)
+
+    # twinkles on the brightest spots, once the painting is alive
+    gray = cv2.cvtColor(paint, cv2.COLOR_RGB2GRAY).astype(np.float32) / 255
+    g2 = cv2.GaussianBlur(gray, (0, 0), 3)
+    peaks = (g2 == cv2.dilate(g2, np.ones((25, 25), np.uint8))) & (g2 > np.percentile(g2, 92)) & (alpha > 0.99)
+    pys, pxs = np.nonzero(peaks)
+    order = rng.permutation(len(pys))[:18]
+    twinkles = [(pxs[i], pys[i], rng.uniform(0, 1), rng.uniform(0.7, 1.3)) for i in order]
 
     # ---------------- the flood: paint bleeds out from each region's crayon lines
     def raster(sts, width_mul=1.0):
@@ -354,7 +364,12 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
 
     # ---------------- sound events
     events = dict(fps=FPS, frames=N, draw=[T_DRAW0, T_DRAW1], blooms=[ws + 2 for ws in wave_start],
-                  wash=T_WASH, done=T_DONE, ambient=anim.sounds, anim=T_ANIM)
+                  wash=T_WASH, done=T_DONE, ambient=anim.sounds, anim=T_ANIM, twinkles=[],
+                  unwrap=unwrap.EVENTS)
+    for sp in anim.specs:
+        if sp["kind"] == "gallop":
+            events["gallop"] = dict(freq=sp.get("freq", 2.4),
+                                    phases=[(hs["phase"] / (2 * math.pi)) % 1 for hs in sp["horses"]])
 
     # two crayon layers: hatching sits under the paint, outlines on top until they wash away
     ink_h = np.zeros((H, W, 3), np.float32); ink_ha = np.zeros((H, W), np.float32)
@@ -410,6 +425,14 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
 
     shadow_still = place(shadow, 1.02, cx + 4 * k, cy + 16 * k, (H, W))
 
+    # the blank primed canvas the doodle is drawn on (revealed by the unwrap)
+    cm = place(np.dstack([np.zeros((h + 2 * pad, w + 2 * pad, 3), np.float32), rgba[..., 3]]), 1.0, cx, cy, (H, W))[..., 3]
+    weave = (np.sin(xx * 2 * np.pi / (3.4 * k)) * np.sin(yy * 2 * np.pi / (3.4 * k))).astype(np.float32)
+    prime = np.array([244, 241, 233], np.float32)[None, None, :] * (1 + 0.018 * weave + 0.012 * grain)[..., None]
+    paper_c = paper * (1 - 0.32 * shadow_still)[..., None]
+    paper_c = paper_c * (1 - cm[..., None]) + prime * cm[..., None]
+    parcel = unwrap.Parcel(W, H, k, (x0, y0, w, h), rng)
+
     proc = None
     if still is None:
         os.makedirs(out_dir, exist_ok=True)
@@ -417,7 +440,7 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
         mp4 = os.path.join(out_dir, f"{name}.mp4")
 
     if sheet_frames is None:
-        sheet_frames = [T_DRAW0 + 70, T_FLOOD + NW * STAG // 2 + 4, T_WASH + 7, T_DONE + 60, N - 2]
+        sheet_frames = [11, 24, 46, T_DRAW0 + 70, T_FLOOD + NW * STAG // 2 + 4, T_WASH + 7, T_DONE + 60, N - 2]
     out_frames = []
     for f in (range(N) if still is None else range(still + 1)):
         # doodle grows
@@ -428,13 +451,9 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
         if still is not None and f != still:
             continue
 
-        frame = paper.copy()
-
         if f < T_DONE:
-            # ---- doodle, then paint soaking in through it
-            prog = min(1.0, max(0.0, (f - T_FLOOD) / (T_DONE - T_FLOOD)))
-            if prog > 0:
-                frame *= (1 - 0.32 * shadow_still * ease(prog))[..., None]
+            # ---- the parcel unwraps, the doodle is drawn on the canvas, then paint soaks in through it
+            frame = (paper if f < unwrap.T_SNAP else paper_c).copy()   # the canvas arrives inside the parcel
             a = (ink_ha * tooth)[..., None]
             frame = frame * (1 - a) + ink_h * a
             if f >= T_FLOOD:
@@ -451,7 +470,10 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
             if 0 < tw < 1.2:
                 edge = 4 * keep * (1 - keep) * (ink_oa > 0.05)
                 frame += edge[..., None] * np.array([60, 55, 40], np.float32)
+            if f < unwrap.END:
+                frame = parcel.draw(frame, f)
         else:
+            frame = paper.copy()
             # ---- the finished painting: one settle bounce, then parts of it come alive
             tp = f - T_DONE
             s = float(np.interp(tp, [0, 5, 14], [1.0, 1.025, 1.0]))
@@ -462,6 +484,17 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
             lay = place(img, s, ox, oy, (H, W))
             a = np.clip(lay[..., 3:4], 0, 1)
             frame = frame * (1 - a) + np.clip(place_rgb(img, s, ox, oy, (H, W)), 0, 255) * a
+            # twinkles (silent but for a barely-there airy shimmer)
+            tt = (f - T_ANIM) / FPS
+            if tt > 0.6:
+                for (tx, ty, ph, spd) in twinkles:
+                    v = math.sin(2 * math.pi * (tt * 0.45 * spd + ph))
+                    if v < 0.75:
+                        continue
+                    a_t = ((v - 0.75) / 0.25) ** 2 * min(1.0, (tt - 0.6) / 0.6)
+                    draw_star(frame, ox + (tx - w / 2) * s, oy + (ty - h / 2) * s, 15 * k * (0.6 + 0.6 * a_t), a_t)
+                    if still is None and v > 0.98 and (not events["twinkles"] or f - events["twinkles"][-1] > 8):
+                        events["twinkles"].append(f)
 
         if handle_img is not None and f >= T_HANDLE:
             a = handle_img[..., 3:4] * ease((f - T_HANDLE) / 20)
@@ -490,6 +523,21 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
     with open(os.path.join(out_dir, f".{name}.events.json"), "w") as fh:
         json.dump(events, fh)
     return out_frames
+
+
+def draw_star(frame, x, y, r, a):
+    """A soft four-point twinkle, added on top."""
+    x0, y0 = int(x - r * 2), int(y - r * 2)
+    sz = int(r * 4) + 1
+    if x0 < 0 or y0 < 0 or x0 + sz >= frame.shape[1] or y0 + sz >= frame.shape[0]:
+        return
+    yy, xx = np.mgrid[0:sz, 0:sz].astype(np.float32)
+    dx, dy = (xx - sz / 2) / r, (yy - sz / 2) / r
+    star = np.exp(-(np.abs(dx) * 6 + dy ** 2 * 0.6)) + np.exp(-(np.abs(dy) * 6 + dx ** 2 * 0.6))
+    star += 0.8 * np.exp(-(dx ** 2 + dy ** 2) * 4)
+    star = np.clip(star, 0, 1.4) * a
+    frame[y0:y0 + sz, x0:x0 + sz] += star[..., None] * np.array([255, 250, 225], np.float32) * 0.9
+    np.clip(frame, 0, 255, out=frame)
 
 
 def render_handle(W, H, k, handle, ink):

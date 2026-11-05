@@ -19,6 +19,10 @@ Effect kinds
   bob      a region floating gently up and down           (a boat, a floating treat)
   shimmer  a fine moving wobble                           (snow)
   petals   a few petals cut from the canopy drift down    (cherry blossom)
+  gallop   per-horse gallop cycle: body bob, rock and     (Wild Horses at the Falls)
+           surge, legs swinging (front and back out of
+           phase), mane and tail flutter
+  splash   white water at the hooves kicking up in time   (Wild Horses at the Falls)
 """
 import math
 import numpy as np
@@ -31,10 +35,34 @@ EFFECTS = {
                                   (0.70, 0.60), (0.61, 0.62), (0.63, 0.42), (0.69, 0.24), (0.68, 0.08)]],
              colour="light", direction=(0.25, 1.0), speed=34, period=26, sound="rush"),
         dict(kind="waves", polys=[[(0.06, 0.57), (0.97, 0.60), (0.99, 0.86), (0.62, 0.96), (0.22, 0.82),
-                                   (0.04, 0.68)]], amp=3.2, wavelength=70, speed=1.3, sound="waves"),
-        dict(kind="sway", polys=[[(0.0, 0.0), (0.47, 0.0), (0.47, 0.36), (0.0, 0.40)],
+                                   (0.04, 0.68)]], amp=2.4, wavelength=70, speed=1.3, sound="waves"),
+        dict(kind="sway", polys=[[(0.0, 0.0), (0.47, 0.0), (0.47, 0.30), (0.0, 0.34)],
                                  [(0.80, 0.22), (1.0, 0.18), (1.0, 0.66), (0.83, 0.66)]],
-             amp=3.0, flutter=1.0, sound="rustle"),
+             amp=2.6, flutter=1.0, sound="rustle"),
+        # five horses, left to right: palomino, dark bay, grey, bay with the white patch, dark brown
+        dict(kind="gallop", freq=2.4, sound="gallop", horses=[
+            dict(body=[(0.07, 0.40), (0.12, 0.38), (0.20, 0.355), (0.27, 0.34), (0.30, 0.37), (0.29, 0.45),
+                       (0.24, 0.50), (0.15, 0.52), (0.08, 0.50)],
+                 legs=[(0.12, 0.49), (0.235, 0.49), (0.245, 0.585), (0.11, 0.585)],
+                 hair=[[(0.055, 0.40), (0.11, 0.40), (0.11, 0.52), (0.06, 0.50)],
+                       [(0.18, 0.35), (0.27, 0.33), (0.28, 0.38), (0.20, 0.40)]], phase=0.0, front=-1),
+            dict(body=[(0.25, 0.40), (0.30, 0.36), (0.35, 0.34), (0.39, 0.38), (0.40, 0.47), (0.38, 0.53),
+                       (0.27, 0.53), (0.24, 0.47)],
+                 legs=[(0.24, 0.51), (0.40, 0.51), (0.40, 0.61), (0.24, 0.61)],
+                 hair=[[(0.30, 0.34), (0.36, 0.33), (0.36, 0.40), (0.30, 0.40)]], phase=2.3, front=1),
+            dict(body=[(0.38, 0.33), (0.43, 0.31), (0.46, 0.34), (0.46, 0.50), (0.42, 0.54), (0.38, 0.50)],
+                 legs=[(0.39, 0.50), (0.46, 0.50), (0.46, 0.59), (0.39, 0.59)],
+                 hair=[[(0.42, 0.31), (0.46, 0.31), (0.46, 0.37), (0.43, 0.37)]], phase=4.4, front=-1),
+            dict(body=[(0.44, 0.40), (0.50, 0.37), (0.56, 0.35), (0.60, 0.38), (0.60, 0.46), (0.57, 0.52),
+                       (0.46, 0.52), (0.44, 0.47)],
+                 legs=[(0.45, 0.50), (0.60, 0.50), (0.60, 0.63), (0.45, 0.63)],
+                 hair=[[(0.55, 0.34), (0.59, 0.34), (0.59, 0.40), (0.55, 0.40)]], phase=1.1, front=1),
+            dict(body=[(0.58, 0.36), (0.62, 0.34), (0.66, 0.36), (0.66, 0.48), (0.63, 0.52), (0.59, 0.50)],
+                 legs=[(0.58, 0.50), (0.66, 0.50), (0.665, 0.60), (0.58, 0.60)],
+                 hair=[[(0.63, 0.38), (0.67, 0.38), (0.67, 0.50), (0.64, 0.50)]], phase=3.3, front=1),
+        ]),
+        dict(kind="splash", polys=[[(0.09, 0.545), (0.67, 0.555), (0.67, 0.65), (0.09, 0.62)]],
+             colour="light", freq=2.4, amp=4.0),
     ],
     "art_IMG_2256": [  # Lavender Peaks Harbour
         dict(kind="drift", polys=[[(0, 0), (1, 0), (1, 0.27), (0, 0.27)]], amp=10, sound="wind"),
@@ -53,14 +81,14 @@ EFFECTS = {
     ],
     "art_IMG_7165": [  # Winter Sun, Spinning
         dict(kind="swirl", polys=[[(0, 0), (1, 0), (1, 0.74), (0, 0.74)]], colour="not_navy",
-             centre=(0.62, 0.31), amp=0.018, sound="pad"),
+             centre=(0.62, 0.31), amp=0.018, sound="airy"),
         dict(kind="shimmer", polys=[[(0, 0.72), (1, 0.70), (1, 1), (0, 1)]], amp=1.6, sound="wind"),
         dict(kind="sway", polys=[[(0.03, 0.0), (0.85, 0.0), (0.85, 0.60), (0.03, 0.60)]], colour="navy",
              amp=2.0, flutter=0.0),
     ],
     "art_IMG_5557": [  # Aurora Over the Sea (round)
         dict(kind="aurora", polys=[[(0, 0), (1, 0), (1, 0.52), (0, 0.52)]], colour="greenish",
-             amp=4.0, sound="pad"),
+             amp=4.0, sound="airy"),
         dict(kind="waves", polys=[[(0, 0.50), (1, 0.50), (1, 1), (0, 1)]], colour="not_dark",
              amp=3.0, wavelength=90, speed=1.0, sound="waves"),
         dict(kind="sway", polys=[[(0.05, 0.68), (0.36, 0.70), (0.36, 0.98), (0.05, 0.98)],
@@ -71,14 +99,14 @@ EFFECTS = {
         dict(kind="glint", polys=[[(0, 0.50), (1, 0.50), (1, 1), (0, 1)]], colour="yellow", amp=6.0),
         dict(kind="waves", polys=[[(0, 0.50), (1, 0.50), (1, 1), (0, 1)]], amp=3.0, wavelength=110,
              speed=1.1, sound="waves"),
-        dict(kind="drift", polys=[[(0, 0), (1, 0), (1, 0.46), (0, 0.46)]], amp=8, sound="pad"),
+        dict(kind="drift", polys=[[(0, 0), (1, 0), (1, 0.46), (0, 0.46)]], amp=8, sound="airy"),
     ],
     "art_banana_treats_astronaut": [  # Banana Treats for the Astronaut
         dict(kind="flow", polys=[[(0, 0), (1, 0), (1, 0.42), (0.80, 0.30), (0.60, 0.22), (0.35, 0.26),
                                   (0.12, 0.34), (0, 0.34)]],
              radial=(0.42, 0.42), speed=30, period=28, sound="wind"),
         dict(kind="bob", polys=[[(0.62, 0.20), (0.82, 0.18), (0.90, 0.50), (0.96, 0.74), (0.78, 0.82),
-                                 (0.61, 0.72), (0.57, 0.45)]], amp=5.0, period=3.6, sound="pad"),
+                                 (0.61, 0.72), (0.57, 0.45)]], amp=5.0, period=3.6, sound="airy"),
     ],
     "art_IMG_7158": [  # Cherry Blossom Road
         dict(kind="sway", polys=[[(0.0, 0.32), (0.46, 0.32), (0.46, 0.57), (0.25, 0.70), (0.0, 0.64)],
@@ -125,6 +153,8 @@ def _colour(paint, which):
 def make_mask(spec, paint, k):
     h, w = paint.shape[:2]
     m = np.zeros((h, w), np.float32)
+    if "polys" not in spec:
+        return np.ones((h, w), np.float32)
     for poly in spec["polys"]:
         pts = np.round(np.array(poly) * [w, h] * 4).astype(np.int32)
         cv2.fillPoly(m, [pts], 1.0, cv2.LINE_AA, shift=2)
@@ -164,8 +194,30 @@ class Animator:
             e["bot"] = ys.max() if len(ys) else H2
             if sp["kind"] == "petals":
                 e["petals"] = self._make_petals(sp, m, rng)
+            if sp["kind"] == "gallop":
+                e["horses"] = [self._make_horse(hs) for hs in sp["horses"]]
             self.effects.append(e)
         self.sounds = sorted({sp["sound"] for sp in self.specs if sp.get("sound")})
+
+    def _poly_mask(self, polys, feather):
+        h, w, pad = self.h, self.w, self.pad
+        m = np.zeros((h, w), np.float32)
+        for poly in polys:
+            pts = np.round(np.array(poly) * [w, h] * 4).astype(np.int32)
+            cv2.fillPoly(m, [pts], 1.0, cv2.LINE_AA, shift=2)
+        return np.pad(cv2.GaussianBlur(m, (0, 0), feather * self.k), pad)
+
+    def _make_horse(self, hs):
+        k, pad, w, h = self.k, self.pad, self.w, self.h
+        whole = self._poly_mask([hs["body"], hs["legs"]] + hs.get("hair", []), 6)
+        legs = self._poly_mask([hs["legs"]], 4)
+        hair = self._poly_mask(hs.get("hair", []), 4) if hs.get("hair") else None
+        b = np.array(hs["body"]) * [w, h] + pad
+        lg = np.array(hs["legs"]) * [w, h] + pad
+        return dict(whole=whole, legs=legs, hair=hair, phase=hs["phase"], front=hs.get("front", 1),
+                    cx=b[:, 0].mean(), cy=b[:, 1].mean(),
+                    ltop=lg[:, 1].min(), lbot=lg[:, 1].max(), lmid=lg[:, 0].mean(),
+                    lhalf=(lg[:, 0].max() - lg[:, 0].min()) / 2)
 
     def _make_petals(self, sp, m, rng):
         k = self.k
@@ -252,6 +304,38 @@ class Animator:
                 dy += a * A * 0.6 * np.sin(0.11 * Y / k - 2.2 * t + ph[1])
             elif kd == "flow":
                 flows.append(e)
+            elif kd == "gallop":
+                om = 2 * math.pi * sp.get("freq", 2.4)
+                for hz in e["horses"]:
+                    ph = hz["phase"]
+                    wm = amp_in * hz["whole"]
+                    cyc = om * t + ph
+                    # the body: bob (twice per stride, like a real gallop's suspension), rock fore and aft, surge
+                    bob = 2.6 * k * math.sin(2 * cyc) + 1.2 * k * math.sin(cyc + 0.6)
+                    surge = 2.0 * k * math.sin(cyc + 1.0)
+                    rock = 0.016 * math.sin(cyc + 1.9)
+                    rx, ry = X - hz["cx"], Y - hz["cy"]
+                    ca, sa = math.cos(rock) - 1, math.sin(rock)
+                    dx += wm * (surge + ca * rx - sa * ry)
+                    dy += wm * (bob + sa * rx + ca * ry)
+                    # the legs: swing grows down to the hooves; front and back pairs half a stride apart
+                    lm = amp_in * hz["legs"]
+                    depth = np.clip((Y - hz["ltop"]) / max(1.0, hz["lbot"] - hz["ltop"]), 0, 1) ** 1.3
+                    fb = np.tanh((X - hz["lmid"]) / (0.35 * hz["lhalf"] + 1e-3)) * hz["front"]
+                    lp = cyc + 1.2 + 1.6 * fb
+                    dx += lm * depth * 6.0 * k * np.sin(lp)
+                    dy += lm * depth * 2.4 * k * np.maximum(0, -np.cos(lp))
+                    # mane and tail flutter
+                    if hz["hair"] is not None:
+                        hm = amp_in * hz["hair"]
+                        dx += hm * 1.7 * k * np.sin(0.30 * Y / k + 3 * cyc)
+                        dy += hm * 1.3 * k * np.sin(0.27 * X / k + 3 * cyc + 1.3)
+            elif kd == "splash":
+                om = 2 * math.pi * sp.get("freq", 2.4)
+                A = sp.get("amp", 4) * k
+                kick = np.maximum(0, np.sin(om * t + 2 * math.pi * 1.7 * fx + ph[0])) ** 3
+                dy += a * A * kick * (0.6 + 0.4 * np.sin(0.4 * X / k + 7 * t))
+                dx += a * A * 0.5 * np.sin(0.25 * Y / k + 0.3 * X / k + 5 * t + ph[1])
         if not flows:
             out = cv2.remap(rgba, X + dx, Y + dy, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
         else:
