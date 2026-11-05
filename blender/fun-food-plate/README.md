@@ -15,7 +15,7 @@ Needs Blender 4.2 (Cycles on the CPU), ffmpeg, and Python with numpy.
 ```bash
 blender -b -P fun_food_plate.py -- --out frames/ --res 720 --samples 12
 python3 soundtrack.py frames/events.json frames/sound.wav
-ffmpeg -framerate 30 -i frames/f_%04d.png -i frames/sound.wav -c:v libx264 -pix_fmt yuv420p -crf 20 -c:a aac -shortest fun-food-plate.mp4
+ffmpeg -framerate 30 -i frames/f_%04d.png -i frames/sound.wav -c:v libx264 -pix_fmt yuv420p -crf 20 -af "highpass=f=120,acompressor=threshold=-20dB:ratio=3:makeup=4,loudnorm=I=-14:TP=-1" -ar 48000 -ac 2 -c:a aac -b:a 160k -shortest -movflags +faststart fun-food-plate.mp4
 ```
 
 `--still N` renders only frame N; `--still 9999` renders the full plate. Raise `--res` and
