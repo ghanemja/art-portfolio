@@ -1,13 +1,15 @@
 """Soundtrack for a painting reel, built from the reel's events:
 crayon scratching while the doodle is drawn, a soft bloop as each region floods
-with paint (rising in pitch), a shimmer as the crayon lines wash away and a
-gentle settle pop, over a kalimba-and-pad tune.
+with paint (rising in pitch), a shimmer as the crayon lines wash away, a
+gentle settle pop, then ambient beds matched to whatever moves in the painting
+(waves, a waterfall's rush, rustling leaves, wind, an airy pad), over a
+kalimba-and-pad tune.
 
 The sound effects keep most of their energy between 500 Hz and 4 kHz so they
 come through phone speakers. master() makes the final mix loud enough to post:
 -14 LUFS integrated, true peak -1 dBTP, with a two-pass ffmpeg loudnorm.
 """
-import json, re, subprocess, wave
+import json, os, re, subprocess, wave
 import numpy as np
 from scipy.signal import butter, sosfilt
 
@@ -112,6 +114,42 @@ def make(ev, path, seed=0):
     # --- settle: one gentle, slightly lower pop as the painting lands
     _add(mix, 0.09 * _bloop(hz(root + 7), rng, 0.25), at(ev["done"]))
 
+    # --- ambient beds for the moving painting, fading in with the motion
+    if ev.get("ambient"):
+        a0 = int(at(ev["anim"]))
+        L = n - a0
+        t = np.arange(L) / SR
+        fade_in = np.minimum(1, t / 0.8)
+        for kind in ev["ambient"]:
+            if kind == "waves":      # swells every 3-5 s
+                nz = _bandnoise(L, 250, 2200, rng) + 0.5 * _bandnoise(L, 2200, 4500, rng)
+                per = rng.uniform(3.2, 4.6)
+                sw = 0.25 + 0.75 * np.sin(np.pi * (t + rng.uniform(0, per)) / per) ** 2
+                y = 0.10 * nz * sw
+            elif kind == "rush":     # waterfall / river: steady pink-ish rush
+                y = 0.07 * (_bandnoise(L, 300, 1200, rng) + 0.8 * _bandnoise(L, 1200, 5000, rng))
+                y *= 0.9 + 0.1 * np.sin(2 * np.pi * 0.4 * t)
+            elif kind == "rustle":   # leaves: soft high-passed bursts
+                nz = _bandnoise(L, 2000, 8000, rng)
+                env = np.zeros(L)
+                tt = rng.uniform(0, 0.4)
+                while tt < L / SR:
+                    d = rng.uniform(0.25, 0.7)
+                    i0, i1 = int(tt * SR), min(L, int((tt + d) * SR))
+                    env[i0:i1] += np.sin(np.linspace(0, np.pi, i1 - i0)) ** 2 * rng.uniform(0.5, 1)
+                    tt += rng.uniform(0.35, 1.1)
+                y = 0.09 * nz * env
+            elif kind == "wind":     # slow, breathy wind
+                y = 0.08 * _bandnoise(L, 300, 1400, rng) * (0.45 + 0.55 * np.sin(2 * np.pi * 0.17 * t + 1) ** 2)
+            elif kind == "pad":      # airy, magical pad
+                y = np.zeros(L)
+                for m in (root + 24, root + 28, root + 31, root + 35):
+                    y += np.sin(2 * np.pi * hz(m) * t + rng.uniform(0, 6)) * (0.6 + 0.4 * np.sin(2 * np.pi * rng.uniform(0.1, 0.3) * t))
+                y = 0.012 * y + 0.02 * _bandnoise(L, 3000, 7000, rng) * (0.5 + 0.5 * np.sin(2 * np.pi * 0.25 * t))
+            else:
+                continue
+            _add(mix, 0.65 * y * fade_in, a0)
+
     mix = np.tanh(mix * 2.0) / np.tanh(2.0)
     fade = int(0.5 * SR)
     mix[-fade:] *= np.linspace(1, 0, fade)
@@ -132,6 +170,17 @@ def master(src, dst, target=-14.0, tp=-1.5, lra=11):
     af = (f"loudnorm=I={target}:TP={tp}:LRA={lra}:measured_I={m['input_i']}:measured_TP={m['input_tp']}"
           f":measured_LRA={m['input_lra']}:measured_thresh={m['input_thresh']}:offset={m['target_offset']}"
           f":linear=true:print_format=summary")
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", src, "-af", af, "-ar", str(SR), "-ac", "2", dst],
+    tmp = dst + ".pass2.wav"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", src, "-af", af, "-ar", str(SR), "-ac", "2", tmp],
                    check=True)
+    # linear loudnorm can land a little short when the peaks limit it; top up with
+    # plain gain, never past the true-peak target
+    p = subprocess.run(["ffmpeg", "-hide_banner", "-i", tmp, "-af",
+                        f"loudnorm=I={target}:TP={tp}:LRA={lra}:print_format=json", "-f", "null", "-"],
+                       capture_output=True, text=True)
+    m = json.loads(re.findall(r"\{[^{}]*\}", p.stderr)[-1])
+    gain = min(target - float(m["input_i"]), tp - float(m["input_tp"]))
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", tmp, "-af", f"volume={max(0.0, gain):.2f}dB",
+                    "-ar", str(SR), "-ac", "2", dst], check=True)
+    os.remove(tmp)
     return dst

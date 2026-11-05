@@ -2,8 +2,9 @@
 
 A crayon doodle of the painting is scribbled onto paper, real paint floods into
 each crayon shape (a soft bloop each), the outlines wash away, the painting
-settles with a little bounce, then comes alive with a slow push-in and 2.5D
-parallax while the artist's handle fades in at the bottom.
+settles with a little bounce, then parts of it come alive (water flows, trees
+sway, clouds drift; see animate.py) with ambient sound, while the artist's handle
+fades in at the bottom.
 
     python3 render_reel.py art_IMG_0658 [art_IMG_5557 ...] [--res 1080] [--still FRAME] [--out out/] [--handle @name]
 
@@ -20,6 +21,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
 sys.path.insert(0, HERE)
 import soundtrack  # noqa: E402
+import animate  # noqa: E402
 
 FPS = 30
 
@@ -260,15 +262,19 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
     T_WASH = T_GLOBAL + 6                    # crayon outlines wash away
     WDUR = 16
     T_DONE = T_GLOBAL + GDUR                 # painting complete: settle bounce
-    T_HANDLE = T_DONE + 18                   # the handle fades in once the painting has settled
-    N = T_DONE + 160
+    T_ANIM = T_DONE + 8                      # the painting starts to move as the bounce settles
+    T_HANDLE = T_DONE + 40                   # the handle fades in while it moves
+    N = T_DONE + 14 + 140                    # ~4.7 s of life after the settle
+
+    if still is not None:
+        print(f"timeline: flood {T_FLOOD} done {T_DONE} anim {T_ANIM} handle {T_HANDLE} end {N}", file=sys.stderr)
 
     def pen_at(f):
         t = (f - T_DRAW0) / (T_DRAW1 - T_DRAW0)
         t = min(1, max(0, t))
         return total_len * (0.6 * t + 0.4 * ease(t))  # quick start, eases into the finish
 
-    # ---------------- painting with alpha, shadow, depth
+    # ---------------- painting with alpha and shadow
     alpha = np.zeros((h, w), np.float32)
     if oval:
         cv2.ellipse(alpha, (w // 2, h // 2), (int(w * 0.485), int(h * 0.485)), 0, 0, 360, 1.0, -1, cv2.LINE_AA)
@@ -280,6 +286,7 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
     rgba[..., :3] = cv2.copyMakeBorder(paint, pad, pad, pad, pad, cv2.BORDER_REPLICATE)
     rgba[pad:pad + h, pad:pad + w, 3] = alpha
     shadow = cv2.GaussianBlur(rgba[..., 3], (0, 0), 14 * k)
+    anim = animate.Animator(name, paint, pad, k, rng)
 
     # ---------------- the flood: paint bleeds out from each region's crayon lines
     def raster(sts, width_mul=1.0):
@@ -342,26 +349,12 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
     wash_noise = cv2.GaussianBlur(rng.random((H, W)).astype(np.float32), (0, 0), 7 * k)
     wash_noise = (wash_noise - wash_noise.min()) / (wash_noise.max() - wash_noise.min() + 1e-6)
 
-    # fake depth for the parallax: sky/top far, foreground near, detail a touch nearer
-    gray = cv2.cvtColor(paint, cv2.COLOR_RGB2GRAY).astype(np.float32) / 255
-    detail = cv2.GaussianBlur(np.abs(cv2.Laplacian(cv2.GaussianBlur(gray, (0, 0), 2), cv2.CV_32F)), (0, 0), 12)
-    detail /= detail.max() + 1e-6
-    vy = np.linspace(0, 1, h, dtype=np.float32)[:, None] * np.ones((1, w), np.float32)
-    depth = 0.75 * vy ** 1.2 + 0.25 * detail
-    depth = cv2.GaussianBlur(depth, (0, 0), 30 * k)
-    depth = (depth - depth.min()) / (depth.max() - depth.min() + 1e-6)
-    # gentle shimmer on water-ish blues in the lower half
-    hsv = cv2.cvtColor(paint, cv2.COLOR_RGB2HSV).astype(np.float32)
-    water = ((hsv[..., 0] > 85) & (hsv[..., 0] < 130) & (hsv[..., 1] > 60)).astype(np.float32) * (vy > 0.35)
-    water = cv2.GaussianBlur(water, (0, 0), 6)
-    lum = gray
-
     # ---------------- handle, small and centred, inside Instagram's safe area
     handle_img = render_handle(W, H, k, handle, ink=(72, 62, 58)) if handle else None
 
     # ---------------- sound events
     events = dict(fps=FPS, frames=N, draw=[T_DRAW0, T_DRAW1], blooms=[ws + 2 for ws in wave_start],
-                  wash=T_WASH, done=T_DONE)
+                  wash=T_WASH, done=T_DONE, ambient=anim.sounds, anim=T_ANIM)
 
     # two crayon layers: hatching sits under the paint, outlines on top until they wash away
     ink_h = np.zeros((H, W, 3), np.float32); ink_ha = np.zeros((H, W), np.float32)
@@ -423,14 +416,8 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
         wav = os.path.join(out_dir, f".{name}.wav")
         mp4 = os.path.join(out_dir, f"{name}.mp4")
 
-    ix = np.arange(w + 2 * pad, dtype=np.float32)[None, :].repeat(h + 2 * pad, 0)
-    iy = np.arange(h + 2 * pad, dtype=np.float32)[:, None].repeat(w + 2 * pad, 1)
-    depth_p = np.pad(depth, pad, mode="edge")
-    water_p = np.pad(water, pad)
-    lum_p = np.pad(lum, pad)
-
     if sheet_frames is None:
-        sheet_frames = [T_DRAW0 + 70, T_FLOOD + NW * STAG // 2 + 4, T_WASH + 7, T_DONE + 45, N - 2]
+        sheet_frames = [T_DRAW0 + 70, T_FLOOD + NW * STAG // 2 + 4, T_WASH + 7, T_DONE + 60, N - 2]
     out_frames = []
     for f in (range(N) if still is None else range(still + 1)):
         # doodle grows
@@ -465,24 +452,11 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
                 edge = 4 * keep * (1 - keep) * (ink_oa > 0.05)
                 frame += edge[..., None] * np.array([60, 55, 40], np.float32)
         else:
-            # ---- the finished painting: settle bounce, then push-in and parallax
+            # ---- the finished painting: one settle bounce, then parts of it come alive
             tp = f - T_DONE
-            s_set = float(np.interp(tp, [0, 5, 14], [1.0, 1.025, 1.0]))
-            ta = max(0.0, (f - T_DONE - 14) / (N - T_DONE - 14))
-            s_push = 1 + 0.07 * ease(ta)
-            tt = (f - T_DONE) / FPS
-            camx = math.sin(tt * 2 * math.pi / 7.0) * ease(min(1, ta * 3))
-            camy = math.sin(tt * 2 * math.pi / 9.0 + 1.0) * ease(min(1, ta * 3))
-            amp = 13 * k
-            dx = (depth_p - 0.5) * amp * camx
-            dy = (depth_p - 0.5) * amp * 0.6 * camy
-            sh = water_p * 1.6 * k * np.sin(iy * 0.09 / k - tt * 3.2 + ix * 0.012) * ease(min(1, tp / 20))
-            img = cv2.remap(rgba, (ix - dx).astype(np.float32), (iy - dy + sh).astype(np.float32),
-                            cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
-            img[..., 3] = rgba[..., 3]
-            s = s_set * s_push
-            ox = cx + 6 * k * camx
-            oy = cy + 4 * k * camy
+            s = float(np.interp(tp, [0, 5, 14], [1.0, 1.025, 1.0]))
+            img = anim.frame(rgba, (f - T_ANIM) / FPS)
+            ox, oy = cx, cy
             sh_layer = place(shadow, s * 1.02, ox + 4 * k, oy + 16 * k * s, (H, W))
             frame *= (1 - 0.32 * sh_layer)[..., None]
             lay = place(img, s, ox, oy, (H, W))
