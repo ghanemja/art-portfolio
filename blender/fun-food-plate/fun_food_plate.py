@@ -340,22 +340,23 @@ def sstep(e0, e1, x):
 
 # 3. Vanilla ice cream scoop with chocolate drizzle and a cherry ----------
 def make_icecream():
-    g = group("icecream", 0.5, 0.52, 0)
-    R0 = 0.3
-    vanilla = mat("vanilla", (0.98, 0.93, 0.78), rough=0.5, sss=0.45)
+    g = group("icecream", 0.52, 0.56, 0)
+    R0 = 0.34
+    vanilla = mat("vanilla", (1.0, 0.95, 0.84), rough=0.55, sss=0.3)
     vanilla.node_tree.nodes["Principled BSDF"].inputs["Subsurface Radius"].default_value = (1, 0.9, 0.7)
-    mottle(vanilla, (0.35, 0.25, 0.15), scale=120, amount=0.12, bump=0.5, bump_scale=35)
+    vanilla.node_tree.nodes["Principled BSDF"].inputs["Subsurface Scale"].default_value = 0.015
+    mottle(vanilla, (0.96, 0.88, 0.72), scale=14, amount=1.0, bump=0.6, bump_scale=30)
     bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=6, radius=R0, location=(0, 0, 0))
     sc = bpy.context.object; sc.name = "scoop"; sc.parent = g
     for v in sc.data.vertices:  # scooped ridges + lumps
-        a = math.atan2(v.co.y, v.co.x); k = 1 + 0.06 * fbm(v.co.x * 9, v.co.y * 9, v.co.z * 9) \
-            + 0.025 * math.sin(7 * a + v.co.z * 20)
+        a = math.atan2(v.co.y, v.co.x); k = 1 + 0.1 * fbm(v.co.x * 7, v.co.y * 7, v.co.z * 7) \
+            + 0.035 * math.sin(6 * a + v.co.z * 18) + 0.06 * max(0.0, -v.co.z / R0 - 0.2)
         v.co *= k
-    sc.scale = (1, 1, 0.72); sc.location.z = TOP + R0 * 0.5
+    sc.scale = (1, 1, 0.9); sc.location.z = TOP + R0 * 0.6
     sc.data.materials.append(vanilla); smooth(sc)
     # melted puddle round the foot
     nz = smooth_noise(6, 0.08)
-    pud = polar_slab("puddle", g, 0, 2 * math.pi, lambda a: 0.36 * (1 + nz(a)),
+    pud = polar_slab("puddle", g, 0, 2 * math.pi, lambda a: 0.4 * (1 + nz(a)),
                      lambda t, a, x, y: 0.012 * (1 - sstep(0.7, 1.0, t)),
                      lambda t, a, x, y: (0.97, 0.92, 0.78), n_r=16, n_a=96, closed=True)
     pud.location.z = TOP; pud.data.materials.append(vcol_mat("melt", rough=0.12, sss=0.3, coat=0.6))
@@ -363,16 +364,16 @@ def make_icecream():
     choc = mat("drizzle", (0.16, 0.06, 0.025), rough=0.12, spec=0.6, coat=1.0)
     pts = []
     for i in range(140):
-        t = i / 139; x = -0.27 + 0.54 * t; y = 0.2 * math.sin(t * math.pi * 7) * (1 - abs(2 * t - 1) * 0.3)
+        t = i / 139; x = -0.27 + 0.54 * t; y = 0.2 * math.sin(t * math.pi * 6.5 + 0.3 * math.sin(t * 17)) * (1 - abs(2 * t - 1) * 0.35) + 0.015 * math.sin(t * 41)
         d2 = min(0.98, (x * x + y * y) / (R0 * R0))
-        pts.append((x, y, TOP + R0 * 0.5 + 0.72 * R0 * 1.03 * math.sqrt(1 - d2) + 0.008))
+        pts.append((x * R0 / 0.3, y * R0 / 0.3, TOP + R0 * 0.6 + 0.9 * R0 * 1.06 * math.sqrt(1 - d2) + 0.01))
     poly_curve("drizzle", pts, 0.014, choc, g)
     cherry = mat("cherry", (0.45, 0.01, 0.03), rough=0.08, sss=0.2, coat=1.0)
-    sphere("cherry", 0.07, (0.02, 0.02, TOP + R0 * 1.25 + 0.05), (1, 1, 0.92), cherry, g, 48, 24)
+    sphere("cherry", 0.08, (0.02, 0.02, TOP + R0 * 1.55 + 0.06), (1, 1, 0.92), cherry, g, 48, 24)
     stem = mat("stem", (0.35, 0.4, 0.12), rough=0.5)
-    poly_curve("stem", [(0.02, 0.02, TOP + R0 * 1.25 + 0.11), (0.06, 0.06, TOP + R0 * 1.25 + 0.16),
-                        (0.13, 0.08, TOP + R0 * 1.25 + 0.18)], 0.008, stem, g)
-    add_food(g, [(0.5, 0.52, 0.38, 0.37, 0)], (0.6, 0.45, 0.25), (1.0, 0.9, 0.6))
+    poly_curve("stem", [(0.02, 0.02, TOP + R0 * 1.55 + 0.13), (0.06, 0.06, TOP + R0 * 1.55 + 0.18),
+                        (0.13, 0.08, TOP + R0 * 1.55 + 0.2)], 0.008, stem, g)
+    add_food(g, [(0.52, 0.56, 0.42, 0.41, 0)], (0.6, 0.45, 0.25), (1.0, 0.9, 0.6))
 
 # 4. Chocolate-chip cookies --------------------------------------------------
 def make_cookie(name, x, y, rot, rad):
@@ -575,13 +576,13 @@ def make_bear(name, x, y, rot, col):
     return g
 
 def make_gummies():
-    gs = [make_bear("bear_red", 0.05, 0.92, 90, (1.0, 0.08, 0.05)),
+    gs = [make_bear("bear_red", 0.9, 0.25, 90, (1.0, 0.08, 0.05)),
           make_bear("bear_green", -1.0, 0.12, -10, (0.3, 0.9, 0.1)),
           make_bear("bear_yellow", 0.1, 0.0, 20, (1.0, 0.75, 0.0))]
     g = group("gummies", 0, 0)
     for c in gs:
         c.parent = g
-    add_food(g, [(0.05, 0.92, 0.2, 0.29, 90), (-1.0, 0.12, 0.2, 0.29, -10), (0.1, 0.0, 0.2, 0.29, 20)],
+    add_food(g, [(0.9, 0.25, 0.2, 0.29, 90), (-1.0, 0.12, 0.2, 0.29, -10), (0.1, 0.0, 0.2, 0.29, 20)],
              (0.85, 0.1, 0.3), (1.0, 0.65, 0.1))
 
 # 0. Chocolate sauce swoosh (plated first, food sits on it) -----------------

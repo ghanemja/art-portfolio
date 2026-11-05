@@ -1,8 +1,8 @@
 # Fun Food Plate (Blender)
 
 A top-down plate that fills up one food at a time. Each food is scribbled in crayon first, then
-pops into a real 3D food: a sprinkle donut, sushi rolls, a pizza slice, a smiley fried egg,
-strawberries, macarons and gummy bears. At the end the plate empties so the clip loops.
+pops into a 3D dessert: a chocolate sauce swoosh, a sprinkle donut, a vanilla ice cream scoop with
+a cherry, chocolate-chip cookies, macarons, strawberries and gummy bears. At the end the plate empties so the clip loops.
 
 `fun-food-plate.mp4` is the rendered clip (720×1280, 30 fps, about 9.5 s).
 
