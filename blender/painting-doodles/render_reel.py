@@ -518,6 +518,18 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", os.path.join(out_dir, f".{name}.video.mp4"), "-i", mastered,
                     "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2",
                     "-shortest", "-movflags", "+faststart", mp4], check=True)
+    # AAC encoding shifts loudness a few tenths: measure the final file and correct it to -14 LUFS
+    meas = subprocess.run(["ffmpeg", "-hide_banner", "-i", mp4, "-af", "ebur128=peak=true", "-f", "null", "-"],
+                          capture_output=True, text=True).stderr
+    I = float(re.findall(r"I:\s+(-?[\d.]+) LUFS", meas)[-1])
+    TP = float(re.findall(r"Peak:\s+(-?[\d.]+) dBFS", meas)[-1])
+    g = min(-14.0 - I, -1.1 - TP)
+    if abs(g) > 0.05:
+        fixed = os.path.join(out_dir, f".{name}.fixed.mp4")
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", mp4, "-i", mastered, "-map", "0:v", "-map", "1:a",
+                        "-c:v", "copy", "-af", f"volume={g:.2f}dB", "-c:a", "aac", "-b:a", "160k", "-ar", "48000",
+                        "-ac", "2", "-movflags", "+faststart", fixed], check=True)
+        os.replace(fixed, mp4)
     for p in (os.path.join(out_dir, f".{name}.video.mp4"), wav, mastered):
         os.remove(p)
     with open(os.path.join(out_dir, f".{name}.events.json"), "w") as fh:

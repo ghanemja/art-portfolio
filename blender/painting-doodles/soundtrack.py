@@ -53,6 +53,15 @@ def _crackle(rng, dur, density, lo=1500, hi=8000):
     return _band(imp, lo, hi) * 6 + 0.35 * _bandnoise(L, 700, 4500, rng)
 
 
+def _sum(*parts):
+    """Add sounds of different lengths, all starting together."""
+    n = max(len(p) for p in parts)
+    out = np.zeros(n)
+    for p in parts:
+        out[:len(p)] += p
+    return out
+
+
 def _add(mix, y, at):
     a = int(at)
     if a >= len(mix) or a < 0:
@@ -71,8 +80,8 @@ def make(ev, path, seed=0):
     # --- the parcel
     u = ev.get("unwrap")
     if u:
-        _add(mix, 0.5 * _burst(rng, 0.25, 70, 500, 18) + 0.18 * _burst(rng, 0.12, 700, 3500, 45), at(u["land"]))
-        _add(mix, 0.55 * _burst(rng, 0.06, 2000, 9000, 260, 0.0005) + 0.25 * _burst(rng, 0.1, 500, 2000, 90),
+        _add(mix, _sum(0.5 * _burst(rng, 0.25, 70, 500, 18), 0.18 * _burst(rng, 0.12, 700, 3500, 45)), at(u["land"]))
+        _add(mix, _sum(0.55 * _burst(rng, 0.06, 2000, 9000, 260, 0.0005), 0.25 * _burst(rng, 0.1, 500, 2000, 90)),
              at(u["snap"]))
         for f in u["flaps"]:
             d = 0.42
@@ -104,7 +113,7 @@ def make(ev, path, seed=0):
     # --- a soft wet plop for each region that floods with paint
     for i, f in enumerate(ev["blooms"]):
         fc = 600 * 1.06 ** i
-        y = 0.9 * _burst(rng, 0.14, fc * 0.55, fc * 1.7, 30, 0.004) + 0.25 * _burst(rng, 0.03, 2500, 6000, 220, 0.0008)
+        y = _sum(0.9 * _burst(rng, 0.14, fc * 0.55, fc * 1.7, 30, 0.004), 0.25 * _burst(rng, 0.03, 2500, 6000, 220, 0.0008))
         _add(mix, 0.22 * y, at(f))
 
     # --- the crayon lines wash away: a watery shimmer of noise
@@ -114,7 +123,7 @@ def make(ev, path, seed=0):
     _add(mix, 0.07 * sh, wa)
 
     # --- settle: one muffled thump
-    _add(mix, 0.28 * _burst(rng, 0.2, 180, 1300, 20, 0.003) + 0.06 * _burst(rng, 0.03, 2000, 5000, 200), at(ev["done"]))
+    _add(mix, _sum(0.28 * _burst(rng, 0.2, 180, 1300, 20, 0.003), 0.06 * _burst(rng, 0.03, 2000, 5000, 200)), at(ev["done"]))
 
     # --- twinkles: a barely-there airy shimmer, no pitch
     for tw in ev.get("twinkles", []):
@@ -160,7 +169,7 @@ def make(ev, path, seed=0):
                     s = ph * per
                     while s < L / SR:
                         for off, amp in ((0.0, 0.6), (0.07, 0.75), (0.15, 1.0)):
-                            hit = 0.8 * _burst(rng, 0.09, 90, 700, 38) + 0.35 * _burst(rng, 0.04, 700, 2500, 90)
+                            hit = _sum(0.8 * _burst(rng, 0.09, 90, 700, 38), 0.35 * _burst(rng, 0.04, 700, 2500, 90))
                             _add(y, gain * amp * hit, (s + off) * SR)
                         _add(y, gain * 0.35 * _burst(rng, 0.12, 1500, 6000, 40), (s + 0.17) * SR)
                         s += per
@@ -179,9 +188,14 @@ def make(ev, path, seed=0):
         w.writeframes((st * 32767).astype(np.int16).tobytes())
 
 
-def master(src, dst, target=-14.0, tp=-1.5, lra=11):
+def master(src, dst, target=-14.0, tp=-2.0, lra=11):
     """Two-pass ffmpeg loudnorm: measure, then normalise linearly to `target` LUFS.
     True-peak target sits a little under -1 dBTP so AAC encoding stays below -1."""
+    # tame the sharpest transients (twine snap, plops) first, so they don't cap the loudness
+    lim = src + ".lim.wav"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", src, "-af",
+                    "alimiter=limit=0.25:attack=0.5:release=30:level=false", "-ar", str(SR), lim], check=True)
+    src = lim
     p = subprocess.run(["ffmpeg", "-hide_banner", "-i", src, "-af",
                         f"loudnorm=I={target}:TP={tp}:LRA={lra}:print_format=json", "-f", "null", "-"],
                        capture_output=True, text=True)
@@ -201,5 +215,5 @@ def master(src, dst, target=-14.0, tp=-1.5, lra=11):
     gain = min(target - float(m["input_i"]), tp - float(m["input_tp"]))
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", tmp, "-af", f"volume={max(0.0, gain):.2f}dB",
                     "-ar", str(SR), "-ac", "2", dst], check=True)
-    os.remove(tmp)
+    os.remove(tmp); os.remove(lim)
     return dst
