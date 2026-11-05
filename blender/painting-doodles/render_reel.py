@@ -297,6 +297,9 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
     pys, pxs = np.nonzero(peaks)
     order = rng.permutation(len(pys))[:18]
     twinkles = [(pxs[i], pys[i], rng.uniform(0, 1), rng.uniform(0.7, 1.3)) for i in order]
+    sparkle = name not in animate.NO_SPARKLE       # no twinkles, no shimmer, for these reels
+    if not sparkle:
+        twinkles = []
 
     # ---------------- the flood: paint bleeds out from each region's crayon lines
     def raster(sts, width_mul=1.0):
@@ -365,11 +368,21 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
     # ---------------- sound events
     events = dict(fps=FPS, frames=N, draw=[T_DRAW0, T_DRAW1], blooms=[ws + 2 for ws in wave_start],
                   wash=T_WASH, done=T_DONE, ambient=anim.sounds, anim=T_ANIM, twinkles=[],
-                  unwrap=unwrap.EVENTS)
+                  unwrap=unwrap.EVENTS, sparkle=sparkle)
+    for e in anim.effects:
+        if e["spec"]["kind"] == "sway" and e["spec"].get("gust") and "gust" not in events:
+            # the leaves' gusts, as seen a third of the way across the painting
+            events["gust"] = dict(freq=0.42, phase=float(e["ph"][5] - 0.007 * (pad + 0.3 * w) / k),
+                                  start=T_ANIM / FPS)
     for sp in anim.specs:
         if sp["kind"] == "gallop":
             events["gallop"] = dict(freq=sp.get("freq", 2.4),
                                     phases=[(hs["phase"] / (2 * math.pi)) % 1 for hs in sp["horses"]])
+            # every hoof landing, in seconds from the start, with its place across the frame (-1..1)
+            # and how far into the motion's ease-in it is, so the hoofbeats land with the spray
+            t_anim = T_ANIM / FPS
+            events["hooves"] = [[t_anim + tl, (x - pad) / w * 2 - 1, min(1.0, tl / 0.6), hi]
+                                for (tl, x, y, hi, side) in anim.hoof_events(0.0, (N - T_ANIM) / FPS)]
 
     # two crayon layers: hatching sits under the paint, outlines on top until they wash away
     ink_h = np.zeros((H, W, 3), np.float32); ink_ha = np.zeros((H, W), np.float32)
@@ -467,7 +480,7 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
             keep = np.clip((wash_noise - (tw * 1.3 - 0.15)) / 0.15, 0, 1) if tw > 0 else 1.0
             a = (ink_oa * tooth * keep)[..., None]
             frame = frame * (1 - a) + ink_o * a
-            if 0 < tw < 1.2:
+            if 0 < tw < 1.2 and sparkle:
                 edge = 4 * keep * (1 - keep) * (ink_oa > 0.05)
                 frame += edge[..., None] * np.array([60, 55, 40], np.float32)
             if f < unwrap.END:

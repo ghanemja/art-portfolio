@@ -2,12 +2,18 @@
 
 Each reel is 1080×1920 (9:16), 30 fps and about 13–14 seconds long, with sound. It goes like this:
 
-1. **Unwrapping.** The canvas arrives as a kraft-paper parcel tied with twine, the same parcel as the
-   site's loading screen (`js/loading.js`). The paper has fibres, speckles, creases and fold lines.
-   The parcel drops in and lands with a little squash. The twine snaps and whips back to the edges.
-   The four flaps lift and fold back one after another, foreshortened as they rise and showing their
-   paler inside once they're over. Then each flap is scrunched into a ball and tossed off-screen.
-   Underneath is the blank primed canvas, in the painting's exact box or oval (`unwrap.py`).
+1. **Unwrapping.** The canvas arrives as a parchment parcel tied with twine: a warm cream sheet
+   with soft mottling, faint fibres, tea-coloured stains and browned, torn (deckled) edges. The
+   flaps' torn edges overlap each other with a soft contact shadow. The parcel drops in and lands
+   with a little squash, and the twine snaps and whips back to the edges. Then each flap peels like
+   paper, not like a hard cover. A cylinder curl travels from its corner across a 22×22 mesh of the
+   flap. The paper sags under its own weight and flutters, starts slowly, flops over and settles
+   with a tiny bounce. It is lit per pixel: the roll darkens as it turns from the light, catches a
+   highlight, its underside is shaded, and creases show more as it flexes. A soft shadow, taken
+   from the lifted paper's real silhouette, follows the curl. Each flap is then crumpled
+   progressively into a ball (the same mesh gathered up with wrinkles), which is tossed off-screen
+   spinning. Underneath is the blank primed canvas, in the painting's exact box or oval
+   (`unwrap.py`).
 2. **Doodle.** A crayon doodle of the painting is scribbled onto the canvas, sitting exactly where the
    painting will be. The doodle is made from the painting itself: the painting is simplified into a
    few big colour shapes, and each shape is coloured in with zig-zag hatching and outlined in a darker
@@ -20,15 +26,21 @@ Each reel is 1080×1920 (9:16), 30 fps and about 13–14 seconds long, with soun
 5. **Life.** The painting stays put, and things inside it move for about 4.5 s: water rolls, a
    waterfall flows, horses gallop, trees sway, clouds drift, petals fall. Each motion comes from the
    painting's own pixels, warped gently inside a hand-drawn mask. A few twinkles catch the brightest
-   spots.
+   spots, except in the reels listed in `NO_SPARKLE` in `animate.py`, which have no twinkles or
+   shimmer at all.
 6. **Handle.** `@janelle.builds` fades in, small and centred, about 280 px above the bottom edge, so
    Instagram's caption doesn't cover it. It stays until the end.
 
-**Sound.** There is no music and nothing tonal; every sound is filtered noise:
-- the parcel: a thump as it lands, the twine snapping, paper rustling and crinkling, a whoosh as the
-  paper balls fly away
+**Sound.** There is no music and nothing tonal; every sound is filtered noise (apart from the tiny
+chirp inside each lip-pop):
+- the parcel: a thump as it lands, the twine snapping, a rustle with each curl that swells as the
+  flap flops over, a papery slap as it lands, a crackle building as it's crumpled, and a whoosh as
+  each ball flies away
 - crayon scratching while the doodle is drawn
-- a soft wet plop for each paint flood, and a watery shimmer as the lines wash away
+- a light lip-pop for each paint flood (`soundtrack.lip_pop`: 50-80 ms, a 1 ms attack, a tiny
+  highpassed click and a sine chirping 650 to 1500 Hz in about 10 ms, decaying as exp(-t*90),
+  pitched ±10 % per pop), and a watery shimmer as the lines wash away (a soft wet wipe in
+  no-sparkle reels)
 - a muffled thump for the settle
 - ambient sound for whatever moves: waves, a waterfall's rush, rustling leaves, wind, an airy breeze,
   galloping hooves with splashes
@@ -44,7 +56,7 @@ Finished reels are in `out/`.
 
 | Painting | Motion | Sound |
 |---|---|---|
-| Wild Horses at the Falls (`art_IMG_0658`) | the five horses galloping (body bob, rock and surge, legs swinging, mane and tail flutter, each horse at its own phase), splashes kicking up at the hooves, the waterfall flowing down, river waves, trees swaying | galloping hooves with splashes, rushing water, waves, leaves |
+| Wild Horses at the Falls (`art_IMG_0658`) | the whole scene moves with the herd, with no zoom: the five horses gallop (body bob, rock and surge, legs swinging, mane and tail flutter, each horse at its own phase). Each hoof as it lands kicks up spray, a soft puff and the white water heaving, all in the painting's own colours. The river flows the way they run, with V-wakes and churn behind each horse and ripple rings from every hoof. Mist drifts off the waterfall, and the trees and bushes toss in gusts. No sparkles. | hoofbeats with splashes on the exact hoof landings, panned to each horse, the waterfall's rush, the river, leaves in gusty wind |
 | Lavender Peaks Harbour (`art_IMG_2256`) | clouds drifting, harbour waves, the boat bobbing | wind, waves |
 | Castle Above the Valley (`art_IMG_5264`) | clouds drifting, the lakes rippling, the forest swaying | wind, water, leaves |
 | Winter Sun, Spinning (`art_IMG_7165`) | the sky swirling round the sun, snow shimmering, branches swaying | airy breeze, wind |

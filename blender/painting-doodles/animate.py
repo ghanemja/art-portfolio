@@ -22,23 +22,45 @@ Effect kinds
   gallop   per-horse gallop cycle: body bob, rock and     (Wild Horses at the Falls)
            surge, legs swinging (front and back out of
            phase), mane and tail flutter
-  splash   white water at the hooves kicking up in time   (Wild Horses at the Falls)
+  wake     V-shaped wakes trailing behind each horse and   (Wild Horses at the Falls)
+           ripple rings spreading from each hoof landing
+  spray    spray kicked up at each hoof landing: drops and  (Wild Horses at the Falls)
+           a puff of white made from the painting's own
+           white water, plus the water there heaving up
+  mist     the waterfall's own whites, blurred, drifting    (Wild Horses at the Falls)
+           off it in slow wisps
+
+The gallop also gives the hoof landings (hoof_events), so the spray, the ripples
+and the hoofbeats in the soundtrack all land together.
 """
 import math
 import numpy as np
 import cv2
 
 # ---------------------------------------------------------------- per-painting config
+RUN = (0.96, 0.28)       # Wild Horses: the way the herd runs, and the river with it
+RIVER = [(0.07, 0.575), (0.72, 0.585), (1.0, 0.65), (1.0, 0.72), (0.80, 0.80), (0.93, 0.90), (0.75, 0.97),
+         (0.50, 0.92), (0.30, 0.80), (0.13, 0.72), (0.05, 0.66)]
+# paintings whose reel has no twinkles or shimmer at all
+NO_SPARKLE = {"art_IMG_0658"}
+
 EFFECTS = {
-    "art_IMG_0658": [  # Wild Horses at the Falls
+    "art_IMG_0658": [  # Wild Horses at the Falls: the whole scene moves with the galloping herd
         dict(kind="flow", polys=[[(0.66, 0.0), (0.95, 0.0), (0.93, 0.12), (0.84, 0.25), (0.76, 0.42),
                                   (0.70, 0.60), (0.61, 0.62), (0.63, 0.42), (0.69, 0.24), (0.68, 0.08)]],
-             colour="light", direction=(0.25, 1.0), speed=34, period=26, sound="rush"),
-        dict(kind="waves", polys=[[(0.06, 0.57), (0.97, 0.60), (0.99, 0.86), (0.62, 0.96), (0.22, 0.82),
-                                   (0.04, 0.68)]], amp=2.4, wavelength=70, speed=1.3, sound="waves"),
-        dict(kind="sway", polys=[[(0.0, 0.0), (0.47, 0.0), (0.47, 0.30), (0.0, 0.34)],
-                                 [(0.80, 0.22), (1.0, 0.18), (1.0, 0.66), (0.83, 0.66)]],
-             amp=2.6, flutter=1.0, sound="rustle"),
+             colour="light", direction=(0.25, 1.0), speed=40, period=26, sound="rush"),
+        # the river runs the way the herd runs (left to right, towards us), under and past the horses
+        dict(kind="flow", polys=[RIVER], direction=RUN, speed=34, period=34, avoid_horses=True, sound="river"),
+        dict(kind="waves", polys=[RIVER], amp=1.5, wavelength=55, speed=1.8, avoid_horses=True),
+        dict(kind="wake", polys=[RIVER], direction=RUN, amp=2.6, avoid_horses=True),
+        # the trees and bushes toss in the wind of the gallop
+        dict(kind="sway", polys=[[(0.0, 0.0), (0.66, 0.0), (0.66, 0.29), (0.47, 0.30), (0.40, 0.285),
+                                  (0.31, 0.32), (0.21, 0.345), (0.0, 0.37)],
+                                 [(0.0, 0.47), (0.10, 0.49), (0.13, 0.70), (0.0, 0.73)],
+                                 [(0.0, 0.86), (0.32, 0.87), (0.32, 1.0), (0.0, 1.0)]],
+             amp=3.4, flutter=1.5, gust=1.0, avoid_horses=True, sound="rustle"),
+        dict(kind="sway", polys=[[(0.82, 0.12), (1.0, 0.08), (1.0, 0.67), (0.80, 0.67), (0.80, 0.40)]],
+             colour="not_light", amp=3.2, flutter=1.4, gust=1.0),
         # five horses, left to right: palomino, dark bay, grey, bay with the white patch, dark brown
         dict(kind="gallop", freq=2.4, sound="gallop", horses=[
             dict(body=[(0.07, 0.40), (0.12, 0.38), (0.20, 0.355), (0.27, 0.34), (0.30, 0.37), (0.29, 0.45),
@@ -61,8 +83,11 @@ EFFECTS = {
                  legs=[(0.58, 0.50), (0.66, 0.50), (0.665, 0.60), (0.58, 0.60)],
                  hair=[[(0.63, 0.38), (0.67, 0.38), (0.67, 0.50), (0.64, 0.50)]], phase=3.3, front=1),
         ]),
-        dict(kind="splash", polys=[[(0.09, 0.545), (0.67, 0.555), (0.67, 0.65), (0.09, 0.62)]],
-             colour="light", freq=2.4, amp=4.0),
+        # spray kicked up by each hoof as it lands, and mist drifting off the waterfall
+        dict(kind="spray", direction=RUN, sound="splash"),
+        dict(kind="mist", polys=[[(0.58, 0.16), (0.82, 0.12), (0.90, 0.40), (0.84, 0.66), (0.62, 0.64), (0.60, 0.40)]],
+             source=[[(0.66, 0.0), (0.95, 0.0), (0.84, 0.25), (0.72, 0.62), (0.60, 0.62), (0.67, 0.24)]],
+             direction=(-0.85, -0.45), sound="mist"),
     ],
     "art_IMG_2256": [  # Lavender Peaks Harbour
         dict(kind="drift", polys=[[(0, 0), (1, 0), (1, 0.27), (0, 0.27)]], amp=10, sound="wind"),
@@ -131,6 +156,8 @@ def _colour(paint, which):
     H, S, V = hsv[..., 0] * 2, hsv[..., 1] / 255, hsv[..., 2] / 255
     if which == "light":       # white/blue water
         m = (V > 0.6) & ((S < 0.22) | ((H > 180) & (H < 230) & (S > 0.25)))
+    elif which == "not_light":
+        m = ~((V > 0.6) & ((S < 0.22) | ((H > 180) & (H < 230) & (S > 0.25))))
     elif which == "navy":
         m = (H > 200) & (H < 260) & (V < 0.55) & (S > 0.4)
     elif which == "not_navy":
@@ -197,7 +224,55 @@ class Animator:
             if sp["kind"] == "gallop":
                 e["horses"] = [self._make_horse(hs) for hs in sp["horses"]]
             self.effects.append(e)
+        self.horses, self.gfreq = [], 2.4
+        for e in self.effects:
+            if e["spec"]["kind"] == "gallop":
+                self.horses, self.gfreq = e["horses"], e["spec"].get("freq", 2.4)
+        if self.horses:
+            herd = np.clip(sum(hz["whole"] for hz in self.horses), 0, 1)
+            herd = np.maximum(herd, cv2.GaussianBlur(herd, (0, 0), 3 * k))
+            for e in self.effects:
+                if e["spec"].get("avoid_horses"):
+                    e["mask"] = e["mask"] * (1 - herd)
+        self.light = np.pad(_colour(paint, "light"), pad)
+        src = cv2.copyMakeBorder(paint, pad, pad, pad, pad, cv2.BORDER_REPLICATE).astype(np.float32)
+        for e in self.effects:
+            kd = e["spec"]["kind"]
+            if kd == "spray":
+                # each horse's spray takes its colour from the white water round its own hooves
+                for hz in self.horses:
+                    y0_, y1_ = int(hz["lbot"] - 40 * k), int(hz["lbot"] + 10 * k)
+                    x0_, x1_ = int(hz["lmid"] - hz["lhalf"]), int(hz["lmid"] + hz["lhalf"])
+                    win = src[y0_:y1_, x0_:x1_].reshape(-1, 3)
+                    lum = win.mean(1)
+                    hz["spray_col"] = win[lum >= np.percentile(lum, 85)].mean(0)
+            if kd == "mist":
+                sm = self._poly_mask(e["spec"]["source"], 8) * self.light
+                sig = 9 * k
+                e["mA"] = cv2.GaussianBlur(sm, (0, 0), sig).astype(np.float32)
+                e["mC"] = (cv2.GaussianBlur(src * sm[..., None], (0, 0), sig)
+                           / (e["mA"][..., None] + 1e-4)).astype(np.float32)
         self.sounds = sorted({sp["sound"] for sp in self.specs if sp.get("sound")})
+
+    # ---------------------------------------------------------- the hooves
+    def hoof_events(self, t0, t1):
+        """Every hoof landing between t0 and t1 (seconds of animation): (t, x, y, horse, side), x and y
+        in padded-painting pixels. Each leg pair lands as two quick hits, front and back half a stride
+        apart, so a horse makes the ta-ta . ta-ta of a gallop."""
+        out = []
+        om = 2 * math.pi * self.gfreq
+        for hi, hz in enumerate(self.horses):
+            for s in (-1, 1):
+                base = 1.5 * math.pi - hz["phase"] - 1.2 - 1.6 * s * hz["front"]
+                m0 = math.floor((om * t0 - base) / (2 * math.pi)) - 1
+                for m in range(m0, m0 + int((t1 - t0) * self.gfreq) + 4):
+                    tl = (base + 2 * math.pi * m) / om
+                    for j, dt in enumerate((0.0, 0.055)):
+                        t = tl + dt
+                        if t0 <= t < t1:
+                            x = hz["lmid"] + s * (0.5 + 0.25 * j) * hz["lhalf"]
+                            out.append((t, x, hz["lbot"] - 6 * self.k, hi, s))
+        return sorted(out)
 
     def _poly_mask(self, polys, feather):
         h, w, pad = self.h, self.w, self.pad
@@ -241,6 +316,143 @@ class Animator:
                             spin=rng.uniform(-1.5, 1.5)))
         return out
 
+    # ---------------------------------------------------------- water and spray
+    def _box(self, x0, y0, x1, y1):
+        H2, W2 = self.X.shape
+        x0, y0 = max(0, int(x0)), max(0, int(y0))
+        x1, y1 = min(W2, int(x1)), min(H2, int(y1))
+        return (slice(y0, y1), slice(x0, x1)) if x1 > x0 and y1 > y0 else None
+
+    def _wakes(self, dx, dy, a, sp, t):
+        """A V of ripples trailing behind each horse, travelling outwards as it runs, a churned
+        streak straight behind it, and a ring of ripples from every hoof that lands."""
+        k = self.k
+        d = np.array(sp.get("direction", RUN), float); d /= np.linalg.norm(d)
+        n = np.array([-d[1], d[0]])
+        A = sp.get("amp", 2.6) * k
+        tan = 0.36
+        for hi, hz in enumerate(self.horses):
+            hx, hy = hz["lmid"], hz["lbot"] - 4 * k
+            bx = self._box(hx - 300 * k, hy - 50 * k, hx + 40 * k, hy + 110 * k)
+            if bx is None:
+                continue
+            Xs, Ys = self.X[bx] - hx, self.Y[bx] - hy
+            al = -(Xs * d[0] + Ys * d[1])                    # distance behind the horse
+            ac = Xs * n[0] + Ys * n[1]
+            on = np.clip(al / (14 * k), 0, 1) * np.exp(-np.clip(al, 0, None) / (190 * k))
+            arm = np.exp(-((np.abs(ac) - al * tan) / (5 * k + 0.1 * np.abs(al))) ** 2) * on
+            wave = np.sin(2 * math.pi * al / (15 * k) + 2 * math.pi * 2.2 * t + hi * 1.7)
+            sg = np.sign(ac)
+            m = a[bx]
+            dx[bx] += m * A * arm * wave * sg * n[0]
+            dy[bx] += m * A * arm * wave * sg * n[1] * 0.6
+            core = np.exp(-(ac / (9 * k + 0.08 * np.abs(al))) ** 2) * on
+            churn = np.sin(0.16 * Xs / k - 8 * t + hi) * np.sin(0.21 * Ys / k + 6.5 * t)
+            dx[bx] += m * 1.8 * k * core * churn
+            dy[bx] += m * 1.2 * k * core * np.cos(0.14 * Xs / k + 7 * t + hi)
+        # ripple rings from each hoof landing, flattened by perspective
+        for (tl, x, y, hi, side) in self.hoof_events(t - 1.1, t):
+            tau = t - tl
+            r = 4 * k + 75 * k * tau
+            w = 4 * k * (1 + 1.5 * tau)
+            amp = 2.2 * k * math.exp(-2.6 * tau)
+            bx = self._box(x - r - 3 * w, y - (r + 3 * w) / 2.4, x + r + 3 * w, y + (r + 3 * w) / 2.4)
+            if bx is None:
+                continue
+            vx, vy = self.X[bx] - x, (self.Y[bx] - y) * 2.4
+            dist = np.sqrt(vx * vx + vy * vy) + 1e-3
+            ring = amp * np.exp(-((dist - r) / w) ** 2) * np.sin(2 * math.pi * (dist - r) / (9 * k))
+            m = a[bx]
+            dx[bx] += m * ring * vx / dist
+            dy[bx] += m * ring * vy / dist / 2.4
+
+    def _crowns(self, dy, dx, t, amp_in):
+        """The white water at a hoof heaves up as it lands, then falls back."""
+        k = self.k
+        for (tl, x, y, hi, side) in self.hoof_events(t - 0.5, t):
+            tau = t - tl
+            amp = 9 * k * (1 - math.exp(-tau * 40)) * math.exp(-tau * 7) * amp_in
+            bx = self._box(x - 30 * k, y - 45 * k, x + 30 * k, y + 20 * k)
+            if bx is None:
+                continue
+            vx, vy = self.X[bx] - x, self.Y[bx] - (y - 6 * k)
+            bump = np.exp(-(vx / (13 * k)) ** 2 - (vy / (14 * k)) ** 2) * self.light[bx]
+            dy[bx] += amp * bump
+            dx[bx] += 0.35 * amp * bump * np.sin(0.4 * vy / k + 3 * hi)
+
+    def _spray(self, out, e, t, amp_in):
+        """Drops and a soft puff of white, in the colour of the white water at that horse's hooves,
+        flung up and back from each landing hoof."""
+        k = self.k
+        sp = e["spec"]
+        d = np.array(sp.get("direction", RUN), float); d /= np.linalg.norm(d)
+        H2, W2 = out.shape[:2]
+        acc_a = np.zeros((H2, W2), np.float32)
+        acc_c = np.zeros((H2, W2, 3), np.float32)
+
+        def stamp(cx, cy, r, stretch, ang, alpha, col):
+            R = int(r * max(1.0, stretch) * 2.2) + 2
+            bx = self._box(cx - R, cy - R, cx + R + 1, cy + R + 1)
+            if bx is None:
+                return
+            vx, vy = self.X[bx] - cx, self.Y[bx] - cy
+            ca, sa = math.cos(ang), math.sin(ang)
+            u, v = vx * ca + vy * sa, -vx * sa + vy * ca
+            g = np.exp(-(u / (r * stretch)) ** 2 - (v / r) ** 2) * alpha
+            acc_a[bx] += g
+            acc_c[bx] += g[..., None] * col
+
+        for idx, (tl, x, y, hi, side) in enumerate(self.hoof_events(t - 0.8, t)):
+            tau = t - tl
+            rng = np.random.default_rng([int(round(tl * 1000)) & 0xffffffff, hi, side + 1])
+            col = 0.75 * self.horses[hi]["spray_col"] + 0.25 * np.array([232, 238, 242], np.float32)
+            for j in range(5):
+                vy0 = -rng.uniform(170, 330) * k
+                vx0 = (-d[0] * rng.uniform(40, 220) + rng.uniform(-90, 90)) * k
+                g = 1500 * k
+                life = -2 * vy0 / g * rng.uniform(0.85, 1.0)
+                if tau > life:
+                    continue
+                px = x + rng.uniform(-6, 6) * k + vx0 * tau
+                py = y - 4 * k + vy0 * tau + 0.5 * g * tau * tau
+                vxt, vyt = vx0, vy0 + g * tau
+                sp_ = math.hypot(vxt, vyt)
+                fade = (1 - tau / life) ** 0.7 * min(1.0, tau / 0.03)
+                stamp(px, py, rng.uniform(2.6, 4.2) * k, 1 + sp_ / (160 * k), math.atan2(vyt, vxt),
+                      0.55 * fade * amp_in, col)
+            if tau < 0.6:   # the puff of spray
+                r = (9 + 26 * tau) * k
+                stamp(x - d[0] * 14 * k * tau, y - 10 * k - 34 * k * tau, r, 1.3, 0.0,
+                      0.5 * (1 - tau / 0.6) ** 1.3 * amp_in, col)
+        A = np.clip(acc_a, 0, 0.92)
+        C = acc_c / (acc_a[..., None] + 1e-5)
+        A = A * out[..., 3]
+        out[..., :3] = out[..., :3] * (1 - A[..., None]) + C * A[..., None]
+
+    def _mist(self, out, e, t, amp_in):
+        """The waterfall's own whites, blurred into mist, drifting off it in slow wisps."""
+        k = self.k
+        sp = e["spec"]
+        d = np.array(sp.get("direction", (-0.85, -0.45)), float); d /= np.linalg.norm(d)
+        P, v = 190 * k, 26 * k
+        tx = 9 * k * np.sin(0.017 * self.Y / k + 0.6 * t) + 5 * k * np.sin(0.04 * self.X / k - 0.9 * t)
+        ty = 6 * k * np.sin(0.015 * self.X / k - 0.5 * t)
+        acc_a, acc_c, wsum = 0, 0, 0
+        for phase in (0.0, 0.5):
+            u = (t * v / P + phase) % 1.0
+            wgt = 1 - abs(2 * u - 1)
+            mx = (self.X - d[0] * u * P + tx).astype(np.float32)
+            my = (self.Y - d[1] * u * P + ty).astype(np.float32)
+            a_ = cv2.remap(e["mA"], mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+            c_ = cv2.remap(e["mC"], mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+            acc_a = acc_a + wgt * a_
+            acc_c = acc_c + wgt * c_ * a_[..., None]
+            wsum += wgt
+        A = acc_a / wsum
+        C = 0.45 * acc_c / (acc_a[..., None] + 1e-5) + 0.55 * np.array([244, 247, 249], np.float32)
+        A = np.clip((A - 0.12) / 0.5, 0, 1) ** 1.4 * 0.3 * e["mask"] * amp_in * out[..., 3]
+        out[..., :3] = out[..., :3] * (1 - A[..., None]) + C * A[..., None]
+
     def frame(self, rgba, t):
         """rgba: the padded painting. t: seconds since the animation started."""
         if t <= 0:
@@ -266,10 +478,19 @@ class Animator:
                 A = sp.get("amp", 3) * k
                 hgt = np.clip((e["bot"] - Y) / max(1.0, e["bot"] - e["top"]), 0, 1) ** 1.2   # more at the top
                 wind = np.sin(1.3 * t + 0.004 * X / k + ph[0]) + 0.45 * np.sin(2.3 * t + 0.009 * X / k + ph[1])
+                gst = sp.get("gust", 0.0)
+                gfac = 1.0
+                if gst:
+                    # gusts from the gallop: swells of wind sweeping across, the branches tossing in them
+                    swell = (0.5 + 0.5 * np.sin(2 * math.pi * 0.42 * t - 0.007 * X / k + ph[5])) ** 1.5
+                    toss = np.sin(3.3 * t + 0.011 * X / k + 0.006 * Y / k + ph[3]) \
+                        + 0.5 * np.sin(2 * math.pi * self.gfreq * t + 0.02 * X / k)
+                    wind = 0.6 * wind + gst * 1.1 * swell * toss
+                    gfac = 1 + gst * swell
                 dx += a * A * hgt * wind
-                dy += a * A * 0.25 * hgt * np.sin(1.1 * t + 0.006 * X / k + ph[2])
-                fl = sp.get("flutter", 0.0) * k
-                if fl:
+                dy += a * A * 0.25 * hgt * np.sin(1.1 * t + 0.006 * X / k + ph[2]) * gfac
+                fl = sp.get("flutter", 0.0) * k * gfac
+                if np.any(fl):
                     dx += a * fl * np.sin(0.21 * X / k + 4.1 * t + ph[3]) * np.sin(0.17 * Y / k + 3.3 * t)
                     dy += a * fl * np.sin(0.19 * Y / k - 3.7 * t + ph[4]) * np.sin(0.23 * X / k + 2.9 * t)
             elif kd == "drift":
@@ -330,6 +551,10 @@ class Animator:
                         hm = amp_in * hz["hair"]
                         dx += hm * 1.7 * k * np.sin(0.30 * Y / k + 3 * cyc)
                         dy += hm * 1.3 * k * np.sin(0.27 * X / k + 3 * cyc + 1.3)
+            elif kd == "wake":
+                self._wakes(dx, dy, a, sp, t)
+            elif kd == "spray":
+                self._crowns(dy, dx, t, amp_in)
             elif kd == "splash":
                 om = 2 * math.pi * sp.get("freq", 2.4)
                 A = sp.get("amp", 4) * k
@@ -343,7 +568,7 @@ class Animator:
             outs, wts = [], []
             for phase in (0.0, 0.5):
                 fxs, fys = dx.copy(), dy.copy()
-                wsum = 0
+                wsum = np.full(X.shape, 0.5, np.float32)        # per pixel: each flow its own crossfade
                 for e in flows:
                     sp, m = e["spec"], e["mask"] * amp_in
                     P = sp.get("period", 26) * self.k
@@ -361,13 +586,20 @@ class Animator:
                         ux, uy = d[0], d[1]
                     fxs -= m * off * ux
                     fys -= m * off * uy
-                    wsum = 1 - abs(2 * u - 1)                           # triangle weight
+                    me = np.clip(e["mask"] * 4, 0, 1)
+                    wsum = wsum * (1 - me) + me * (1 - abs(2 * u - 1))  # triangle weight
                 outs.append(cv2.remap(rgba, X + fxs, Y + fys, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT))
                 wts.append(wsum)
             wa, wb = wts
             s = wa + wb + 1e-6
-            out = outs[0] * (wa / s) + outs[1] * (wb / s)
+            out = outs[0] * (wa / s)[..., None] + outs[1] * (wb / s)[..., None]
         out[..., 3] = rgba[..., 3]
+        for e in self.effects:
+            if e["spec"]["kind"] == "mist":
+                self._mist(out, e, t, amp_in)
+        for e in self.effects:
+            if e["spec"]["kind"] == "spray":
+                self._spray(out, e, t, amp_in)
 
         # petals: tiny bits of the canopy drifting down
         for e in self.effects:
