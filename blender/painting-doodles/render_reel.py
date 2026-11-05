@@ -1,11 +1,11 @@
 """Painting Doodles: an Instagram reel for one painting.
 
-A crayon doodle of the painting is scribbled onto paper, the real painting pops
-in with a bounce (and a soft pop), then it comes alive: a slow push-in with
-2.5D parallax, a light sweep across the varnish, a few twinkles, and a title
-card with the artist's name.
+A crayon doodle of the painting is scribbled onto paper, real paint floods into
+each crayon shape (a soft bloop each), the outlines wash away, the painting
+settles with a little bounce, then comes alive with a slow push-in and 2.5D
+parallax while the artist's handle fades in at the bottom.
 
-    python3 render_reel.py art_IMG_0658 [art_IMG_5557 ...] [--res 1080] [--still FRAME] [--out out/]
+    python3 render_reel.py art_IMG_0658 [art_IMG_5557 ...] [--res 1080] [--still FRAME] [--out out/] [--handle @name]
 
 The doodle is made from the painting itself: it is posterised into a handful of
 big colour shapes, and each shape is hatched and outlined in its own colour.
@@ -203,7 +203,8 @@ def make_doodle(paint, box, oval, rng, k=1.0):
 
 
 # ------------------------------------------------------------------ the reel
-def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sheet_frames=None):
+def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sheet_frames=None,
+          handle="@janelle.builds"):
     W, H = res, int(round(res * 16 / 9))
     k = W / 1080.0
     work = works[name]
@@ -259,9 +260,8 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
     T_WASH = T_GLOBAL + 6                    # crayon outlines wash away
     WDUR = 16
     T_DONE = T_GLOBAL + GDUR                 # painting complete: settle bounce
-    T_SWEEP = T_DONE + 4
-    T_TITLE = T_DONE + 70
-    N = T_TITLE + 90
+    T_HANDLE = T_DONE + 18                   # the handle fades in once the painting has settled
+    N = T_DONE + 160
 
     def pen_at(f):
         t = (f - T_DRAW0) / (T_DRAW1 - T_DRAW0)
@@ -356,19 +356,12 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
     water = cv2.GaussianBlur(water, (0, 0), 6)
     lum = gray
 
-    # twinkle spots: bright local maxima
-    g2 = cv2.GaussianBlur(gray, (0, 0), 3)
-    peaks = (g2 == cv2.dilate(g2, np.ones((25, 25), np.uint8))) & (g2 > np.percentile(g2, 92)) & (alpha > 0.99)
-    pys, pxs = np.nonzero(peaks)
-    order = rng.permutation(len(pys))[:18]
-    twinkles = [(pxs[i], pys[i], rng.uniform(0, 1), rng.uniform(0.7, 1.3)) for i in order]
-
-    # ---------------- title card
-    title_img = render_title(W, H, k, work["title"], artist, y_top=y0 + h + 95 * k, ink=(66, 56, 52))
+    # ---------------- handle, small and centred, inside Instagram's safe area
+    handle_img = render_handle(W, H, k, handle, ink=(72, 62, 58)) if handle else None
 
     # ---------------- sound events
     events = dict(fps=FPS, frames=N, draw=[T_DRAW0, T_DRAW1], blooms=[ws + 2 for ws in wave_start],
-                  wash=T_WASH, done=T_DONE, sweep=T_SWEEP, title=T_TITLE, twinkles=[])
+                  wash=T_WASH, done=T_DONE)
 
     # two crayon layers: hatching sits under the paint, outlines on top until they wash away
     ink_h = np.zeros((H, W, 3), np.float32); ink_ha = np.zeros((H, W), np.float32)
@@ -472,7 +465,7 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
                 edge = 4 * keep * (1 - keep) * (ink_oa > 0.05)
                 frame += edge[..., None] * np.array([60, 55, 40], np.float32)
         else:
-            # ---- the finished painting: settle bounce, then push-in, parallax, sweep, twinkles
+            # ---- the finished painting: settle bounce, then push-in and parallax
             tp = f - T_DONE
             s_set = float(np.interp(tp, [0, 5, 14], [1.0, 1.025, 1.0]))
             ta = max(0.0, (f - T_DONE - 14) / (N - T_DONE - 14))
@@ -487,12 +480,6 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
             img = cv2.remap(rgba, (ix - dx).astype(np.float32), (iy - dy + sh).astype(np.float32),
                             cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
             img[..., 3] = rgba[..., 3]
-            ts = (f - T_SWEEP) / 40.0
-            if 0 <= ts <= 1:
-                band_pos = -0.3 + 1.6 * ts
-                u = (ix / (w + 2 * pad)) * 0.8 + (iy / (h + 2 * pad)) * 0.4
-                band = np.exp(-((u - band_pos) / 0.11) ** 2)
-                img[..., :3] += (band * (40 + 60 * lum_p))[..., None]
             s = s_set * s_push
             ox = cx + 6 * k * camx
             oy = cy + 4 * k * camy
@@ -502,24 +489,9 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
             a = np.clip(lay[..., 3:4], 0, 1)
             frame = frame * (1 - a) + np.clip(place_rgb(img, s, ox, oy, (H, W)), 0, 255) * a
 
-            if tp > 20:
-                for (tx, ty, ph, spd) in twinkles:
-                    v = math.sin(2 * math.pi * (tt * 0.45 * spd + ph))
-                    if v < 0.75:
-                        continue
-                    a_t = ((v - 0.75) / 0.25) ** 2
-                    px = ox + (tx - w / 2) * s
-                    py = oy + (ty - h / 2) * s
-                    draw_star(frame, px, py, 15 * k * (0.6 + 0.6 * a_t), a_t)
-                    if still is None and v > 0.98 and (not events["twinkles"] or f - events["twinkles"][-1] > 8):
-                        events["twinkles"].append(f)
-
-        if f >= T_TITLE:
-            ta = ease((f - T_TITLE) / 18)
-            shift = int((1 - ta) * 30 * k)
-            ti = np.roll(title_img, shift, axis=0) if shift else title_img
-            a = ti[..., 3:4] * ta
-            frame = frame * (1 - a) + ti[..., :3] * a
+        if handle_img is not None and f >= T_HANDLE:
+            a = handle_img[..., 3:4] * ease((f - T_HANDLE) / 20)
+            frame = frame * (1 - a) + handle_img[..., :3] * a
 
         out = np.clip(frame, 0, 255).astype(np.uint8)
         if still is not None:
@@ -546,41 +518,12 @@ def build(name, res, out_dir, still=None, artist=None, works=None, seed=None, sh
     return out_frames
 
 
-def draw_star(frame, x, y, r, a):
-    """A soft four-point twinkle, added on top."""
-    x0, y0 = int(x - r * 2), int(y - r * 2)
-    sz = int(r * 4) + 1
-    if x0 < 0 or y0 < 0 or x0 + sz >= frame.shape[1] or y0 + sz >= frame.shape[0]:
-        return
-    yy, xx = np.mgrid[0:sz, 0:sz].astype(np.float32)
-    dx, dy = (xx - sz / 2) / r, (yy - sz / 2) / r
-    star = np.exp(-(np.abs(dx) * 6 + dy ** 2 * 0.6)) + np.exp(-(np.abs(dy) * 6 + dx ** 2 * 0.6))
-    star += 0.8 * np.exp(-(dx ** 2 + dy ** 2) * 4)
-    star = np.clip(star, 0, 1.4) * a
-    frame[y0:y0 + sz, x0:x0 + sz] += star[..., None] * np.array([255, 250, 225], np.float32) * 0.9
-    np.clip(frame, 0, 255, out=frame)
-
-
-def render_title(W, H, k, title, artist, y_top, ink):
+def render_handle(W, H, k, handle, ink):
+    """The handle in Patrick Hand, centred about 280 px (at 1080x1920) above the bottom edge."""
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    fdir = os.path.join(REPO, "fonts")
-    size = 84
-    f1 = ImageFont.truetype(os.path.join(fdir, "caveat-latin-700-normal.woff2"), int(size * k))
-    while d.textlength(title, font=f1) > W - 120 * k and size > 40:
-        size -= 4
-        f1 = ImageFont.truetype(os.path.join(fdir, "caveat-latin-700-normal.woff2"), int(size * k))
-    f2 = ImageFont.truetype(os.path.join(fdir, "patrick-hand-latin-400-normal.woff2"), int(44 * k))
-    y_top = min(y_top, H - 300 * k)
-    d.text((W / 2, y_top), title, font=f1, fill=(*ink, 255), anchor="mt")
-    yb = y_top + size * k * 1.15
-    # a little crayon underline
-    rng = np.random.default_rng(1)
-    tw = d.textlength(title, font=f1) * 0.6
-    xs = np.linspace(W / 2 - tw / 2, W / 2 + tw / 2, 40)
-    ys = yb + 6 * k + np.cumsum(rng.normal(0, 0.6, 40)) * k
-    d.line(list(zip(xs, ys)), fill=(232, 120, 120, 220), width=int(6 * k), joint="curve")
-    d.text((W / 2, yb + 34 * k), artist, font=f2, fill=(*ink, 220), anchor="mt")
+    font = ImageFont.truetype(os.path.join(REPO, "fonts", "patrick-hand-latin-400-normal.woff2"), int(50 * k))
+    d.text((W / 2, H - 280 * k), handle, font=font, fill=(*ink, 230), anchor="mm")
     return np.asarray(img).astype(np.float32) * np.array([1, 1, 1, 1 / 255], np.float32)
 
 
@@ -591,18 +534,20 @@ def main():
     ap.add_argument("--still", type=int, default=None, help="only render this frame to a PNG")
     ap.add_argument("--out", default=os.path.join(HERE, "out"))
     ap.add_argument("--seed", type=int, default=None)
+    ap.add_argument("--handle", default="@janelle.builds", help="shown at the bottom once the painting settles ('' for none)")
     a = ap.parse_args()
     artist, works = load_collection()
     for n in a.names:
         if n not in works:
             sys.exit(f"{n} is not in js/collection.js")
         if a.still is not None:
-            img = build(n, a.res, a.out, still=a.still, artist=artist, works=works, seed=a.seed)
+            img = build(n, a.res, a.out, still=a.still, artist=artist, works=works, seed=a.seed,
+                        handle=a.handle)
             os.makedirs(a.out, exist_ok=True)
             p = os.path.join(a.out, f"{n}_still_{a.still:04d}.png")
             Image.fromarray(img).save(p); print(p)
         else:
-            frames = build(n, a.res, a.out, artist=artist, works=works, seed=a.seed)
+            frames = build(n, a.res, a.out, artist=artist, works=works, seed=a.seed, handle=a.handle)
             os.makedirs(os.path.join(a.out, ".sheets"), exist_ok=True)
             sheet = np.concatenate([cv2.resize(fr, (270, 480), interpolation=cv2.INTER_AREA) for fr in frames], 1)
             Image.fromarray(sheet).save(os.path.join(a.out, ".sheets", n + ".png"))

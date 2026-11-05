@@ -11,13 +11,11 @@ Each reel is 1080×1920 (9:16), 30 fps and about 12 seconds long, with sound. It
    watercolour edge. The hatching vanishes under the paint. A final flood fills the last gaps, then
    the crayon outlines wash away with a wet shimmer. Each flood plays a soft bloop, each one a little
    higher than the last, and the wash plays a sparkle.
-3. The finished painting gives one gentle settle bounce with a soft pop, and a light sweeps across
-   the varnish. Round canvases stay round.
+3. The finished painting gives one gentle settle bounce with a soft pop. Round canvases stay round.
 4. The painting comes alive with a slow push-in and a gentle 2.5D parallax. The sky sits further
-   back than the foreground, blue water shimmers a little, and a few twinkles catch the brightest
-   spots, each with a tiny bell.
-5. A title card (the painting's title and the artist's name from `js/collection.js`) slides in with
-   a chime and holds on screen.
+   back than the foreground, and blue water shimmers a little.
+5. The handle `@janelle.builds` fades in, small and centred, about 280 px above the bottom edge,
+   so Instagram's caption doesn't cover it. It stays until the end.
 
 A soft kalimba-and-pad tune plays under everything. Each painting gets its own key and melody.
 
@@ -41,7 +39,7 @@ Pass one or more painting names. They are the `file:` names in `js/collection.js
 python3 render_reel.py art_IMG_0658 art_IMG_5557
 ```
 
-Check one frame quickly before rendering a whole reel. Frame 128 is the finished doodle, frame 145 is mid-flood, and the last frame is the title card:
+Check one frame quickly before rendering a whole reel. Frame 128 is the finished doodle, frame 145 is mid-flood, and frame 330 shows the handle:
 
 ```bash
 python3 render_reel.py art_IMG_0658 --res 540 --still 128
@@ -51,11 +49,12 @@ Other options:
 - `--out DIR` sets where the reels go.
 - `--seed N` gives a different doodle and tune.
 - `--res 720` makes a smaller, faster reel.
+- `--handle @name` changes the handle, and `--handle ''` leaves it out.
 
 A reel takes about a minute or two to render on a laptop CPU.
 
 The timing is set at the top of `build()` in `render_reel.py`: `T_DRAW0`/`T_DRAW1` for the doodle,
-`T_FLOOD`, `STAG` and `FDUR` for the paint flood, and `T_TITLE` for the title card. The sound is in `soundtrack.py`.
+`T_FLOOD`, `STAG` and `FDUR` for the paint flood, and `T_HANDLE` for when the handle fades in. The sound is in `soundtrack.py`.
 
 This doesn't use Blender: the reel is all flat paper and canvas, so a 2D compositor is quicker and
 keeps the painting pixel-sharp.

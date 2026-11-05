@@ -1,8 +1,7 @@
 """Soundtrack for a painting reel, built from the reel's events:
 crayon scratching while the doodle is drawn, a soft bloop as each region floods
-with paint (rising in pitch), a shimmer as the crayon lines wash away, a gentle
-settle pop, a sweep shimmer, tiny bells on the twinkles and a chime for the
-title, over a kalimba-and-pad tune.
+with paint (rising in pitch), a shimmer as the crayon lines wash away and a
+gentle settle pop, over a kalimba-and-pad tune.
 
 The sound effects keep most of their energy between 500 Hz and 4 kHz so they
 come through phone speakers. master() makes the final mix loud enough to post:
@@ -112,22 +111,6 @@ def make(ev, path, seed=0):
 
     # --- settle: one gentle, slightly lower pop as the painting lands
     _add(mix, 0.09 * _bloop(hz(root + 7), rng, 0.25), at(ev["done"]))
-
-    # --- light sweep shimmer
-    s = at(ev["sweep"])
-    L = int(1.2 * SR)
-    sh = _bandnoise(L, 3000, 9000, rng) * np.sin(np.linspace(0, np.pi, L)) ** 2
-    _add(mix, 0.03 * sh, s)
-
-    # --- twinkles: tiny high bells
-    for tw in ev.get("twinkles", []):
-        m = root + 31 + scale[rng.integers(5)]
-        _add(mix, 0.014 * _tone(hz(m), 0.6, 9), at(tw))
-
-    # --- title chime
-    ti = at(ev["title"])
-    for i, m in enumerate([root + 12, root + 19, root + 24]):
-        _add(mix, 0.045 * _tone(hz(m), 1.6, 3, ((1, 1.0), (2, 0.3), (3, 0.1))), ti + 0.12 * i * SR)
 
     mix = np.tanh(mix * 2.0) / np.tanh(2.0)
     fade = int(0.5 * SR)
